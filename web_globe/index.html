@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Must be set before Cesium.js loads so Workers resolve correctly. -->
+    <script>window.CESIUM_BASE_URL = '/';</script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>What On Earth — Globe</title>
+    <style>
+      html, body, #cesiumContainer {
+        width: 100%; height: 100%;
+        margin: 0; padding: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="cesiumContainer"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "web_globe",
+  "version": "1.0.0",
+  "description": "CesiumJS WebView bundle for What On Earth?!",
+  "type": "module",
+  "scripts": {
+    "build": "vite build --outDir ../assets/globe",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "cesium": "1.138.0",
+    "satellite.js": "4.1.4"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0",
+    "vite-plugin-cesium": "^1.2.23"
+  }
+}
