@@ -1,0 +1,17 @@
+# Environment — never commit secrets
+.env
+
+# Dependencies
+node_modules/
+
+# Build state (regenerated on each run)
+orchestrator/core/buildState.json
+
+# Generated output (reproducible from source)
+generated_app/
+orchestrator/workspace/product_spec.md
+orchestrator/workspace/architecture.md
+orchestrator/workspace/api_spec.json
+orchestrator/workspace/backend.js
+orchestrator/workspace/frontend.jsx
+orchestrator/workspace/review.md
