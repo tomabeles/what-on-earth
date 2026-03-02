@@ -1,17 +1,58 @@
-# what_on_earth
+# What On Earth?!
 
-A new Flutter project.
+Flutter AR app that shows the ISS position overlaid on the live camera feed using CesiumJS in a WebView.
 
-## Getting Started
+## Local development setup
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter 3.27+ (Dart 3.6+)
+- Node.js 22 LTS + npm 10+
+- Xcode 16+ (iOS builds)
+- Android SDK API 31+ (Android builds)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### First-time setup
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. **Build the CesiumJS globe bundle** — this must be done before `flutter run` and whenever JS sources in `web_globe/` change:
+
+   ```bash
+   scripts/build_globe.sh
+   ```
+
+   The output is written to `assets/globe/` (git-ignored). CI runs this step automatically.
+
+2. **Fetch Flutter dependencies:**
+
+   ```bash
+   flutter pub get
+   ```
+
+3. **Run the app:**
+
+   ```bash
+   flutter run
+   ```
+
+### Environment variables
+
+Runtime configuration is injected at build time via `--dart-define`. Copy `.env.example` and pass the keys as `--dart-define=KEY=VALUE` flags (or use a `--dart-define-from-file` file):
+
+```bash
+flutter run \
+  --dart-define=SUPABASE_URL=https://xyz.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=your-anon-key
+```
+
+See `.env.example` for the full list of supported variables and their defaults.
+
+### Useful commands
+
+| Command | Description |
+|---|---|
+| `scripts/build_globe.sh` | Build CesiumJS bundle → `assets/globe/` |
+| `flutter pub get` | Fetch Dart dependencies |
+| `flutter analyze` | Static analysis (must be clean) |
+| `flutter test` | Run unit + widget tests |
+| `flutter build apk --debug` | Debug Android build |
+| `flutter build ios --no-codesign --debug` | Debug iOS build |
+| `dart run build_runner build` | Run drift + riverpod code generation |

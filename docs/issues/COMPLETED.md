@@ -1,0 +1,7 @@
+# Completed Issues
+
+| ID | Title | Commit |
+|---|---|---|
+| WOE-001 | Flutter Project Scaffold | e746d5c |
+| WOE-002 | CesiumJS Vite Build Pipeline | e746d5c |
+| WOE-003 | Flutter Asset Declarations | — |
