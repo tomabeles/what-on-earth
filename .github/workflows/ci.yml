@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Analyze, test, and Android smoke build (Linux) ──────────────────────────
+  build:
+    name: Analyze, test & build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Node + CesiumJS bundle ───────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/cache@v4
+        with:
+          path: web_globe/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('web_globe/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - name: Build CesiumJS bundle
+        run: bash scripts/build_globe.sh
+
+      # ── Flutter ──────────────────────────────────────────────────────────────
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Code generation (drift + riverpod)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build APK (debug smoke build)
+        run: flutter build apk --debug
+
+  # ── iOS smoke build (macOS) ─────────────────────────────────────────────────
+  build-ios:
+    name: Build iOS (no-codesign)
+    runs-on: macos-latest
+    needs: build   # only run if analyze/test/APK pass
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/cache@v4
+        with:
+          path: web_globe/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('web_globe/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - name: Build CesiumJS bundle
+        run: bash scripts/build_globe.sh
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Code generation (drift + riverpod)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build iOS (debug, no-codesign smoke build)
+        run: flutter build ios --no-codesign --debug
