@@ -5,5 +5,5 @@
 | WOE-001 | Flutter Project Scaffold | e746d5c |
 | WOE-002 | CesiumJS Vite Build Pipeline | e746d5c |
 | WOE-003 | Flutter Asset Declarations | 16f9f20 |
-| WOE-004 | GlobeView Widget with Transparent WebView | pending |
-| WOE-005 | Android WebView Transparency Validation and Fix | pending |
+| WOE-004 | GlobeView Widget with Transparent WebView | 2b4fc7f |
+| WOE-005 | Android WebView Transparency Validation and Fix | 2b4fc7f |
