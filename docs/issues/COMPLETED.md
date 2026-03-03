@@ -7,3 +7,4 @@
 | WOE-003 | Flutter Asset Declarations | 16f9f20 |
 | WOE-004 | GlobeView Widget with Transparent WebView | 2b4fc7f |
 | WOE-005 | Android WebView Transparency Validation and Fix | 2b4fc7f |
+| WOE-006 | Flutter↔JS Bridge Skeleton | 2fda4ad |
