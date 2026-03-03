@@ -8,3 +8,4 @@
 | WOE-004 | GlobeView Widget with Transparent WebView | 2b4fc7f |
 | WOE-005 | Android WebView Transparency Validation and Fix | 2b4fc7f |
 | WOE-006 | Flutter↔JS Bridge Skeleton | 2fda4ad |
+| WOE-007 | GitHub Actions CI Pipeline | 24c7c18 |
