@@ -6,6 +6,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
+import 'bridge.dart';
+
 /// Full-screen WebView that hosts the CesiumJS transparent globe.
 ///
 /// Starts a shelf HTTP server on port 8080 that serves the pre-built
@@ -21,6 +23,7 @@ class GlobeView extends StatefulWidget {
 
 class _GlobeViewState extends State<GlobeView> {
   HttpServer? _server;
+  final _bridge = BridgeController();
 
   @override
   void initState() {
@@ -35,6 +38,7 @@ class _GlobeViewState extends State<GlobeView> {
 
   @override
   void dispose() {
+    _bridge.dispose();
     _server?.close(force: true);
     super.dispose();
   }
@@ -53,14 +57,8 @@ class _GlobeViewState extends State<GlobeView> {
         javaScriptEnabled: true,
       ),
       onWebViewCreated: (controller) {
-        // Register the GLOBE_READY handler before the page loads so it is
-        // available when CesiumJS fires it on 'flutterInAppWebViewPlatformReady'.
-        controller.addJavaScriptHandler(
-          handlerName: 'GLOBE_READY',
-          callback: (args) {
-            debugPrint('GlobeView: GLOBE_READY received from CesiumJS');
-          },
-        );
+        // Register all inbound JS handlers before the page loads.
+        _bridge.registerHandlers(controller);
       },
       onLoadStop: (controller, url) async {
         if (Platform.isAndroid) {

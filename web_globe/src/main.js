@@ -52,6 +52,40 @@ viewer.camera.setView({
   },
 });
 
+// ── Flutter → CesiumJS bridge (TECH_SPEC §8.1) ───────────────────────────────
+// All messages arrive as `flutter_message` CustomEvents with
+// { type: string, payload: object } in the detail field.
+
+const handlers = {
+  UPDATE_POSITION(payload) {
+    console.log('UPDATE_POSITION received', payload);
+    // Camera movement wired in WOE-2.7; log confirms bridge works.
+  },
+  UPDATE_ORIENTATION(payload) {
+    // Implemented in WOE-3.3.
+  },
+  SET_TLE(payload) {
+    // Implemented in WOE-2.5.
+  },
+  TOGGLE_LAYER(payload) {
+    // Implemented in a later issue.
+  },
+  SYNC_PINS(payload) {
+    // Implemented in a later issue.
+  },
+  SET_MODE(payload) {
+    // Implemented in a later issue.
+  },
+  REQUEST_PASS_CALC(payload) {
+    // Implemented in a later issue.
+  },
+};
+
+window.addEventListener('flutter_message', (e) => {
+  const { type, payload } = e.detail;
+  handlers[type]?.(payload);
+});
+
 // Notify Flutter that CesiumJS is fully initialized.
 // The 'flutterInAppWebViewPlatformReady' event fires once the Flutter
 // JavaScript handler bridge is available.

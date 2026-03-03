@@ -1,0 +1,139 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+
+/// Outbound message types — Flutter → CesiumJS via `flutter_message` CustomEvent.
+///
+/// See TECH_SPEC §8.1 for payload schemas.
+enum OutboundMessage {
+  updatePosition,
+  updateOrientation,
+  setTle,
+  toggleLayer,
+  syncPins,
+  setMode,
+  requestPassCalc;
+
+  /// The `type` string used in the JS `flutter_message` event detail object.
+  String get messageName => switch (this) {
+        OutboundMessage.updatePosition => 'UPDATE_POSITION',
+        OutboundMessage.updateOrientation => 'UPDATE_ORIENTATION',
+        OutboundMessage.setTle => 'SET_TLE',
+        OutboundMessage.toggleLayer => 'TOGGLE_LAYER',
+        OutboundMessage.syncPins => 'SYNC_PINS',
+        OutboundMessage.setMode => 'SET_MODE',
+        OutboundMessage.requestPassCalc => 'REQUEST_PASS_CALC',
+      };
+}
+
+/// Inbound message types — CesiumJS → Flutter via `callHandler`.
+///
+/// See TECH_SPEC §8.2 for payload schemas.
+enum InboundMessage {
+  globeReady,
+  mapTap,
+  passCalcResult,
+  frameRate;
+
+  /// The handler name registered with [InAppWebViewController.addJavaScriptHandler].
+  String get handlerName => switch (this) {
+        InboundMessage.globeReady => 'GLOBE_READY',
+        InboundMessage.mapTap => 'MAP_TAP',
+        InboundMessage.passCalcResult => 'PASS_CALC_RESULT',
+        InboundMessage.frameRate => 'FRAME_RATE',
+      };
+}
+
+/// Owns the [InAppWebViewController] reference and handles all bidirectional
+/// communication between Flutter and CesiumJS (TECH_SPEC §8).
+///
+/// Usage:
+/// 1. Create an instance and hold it in widget [State].
+/// 2. Call [registerHandlers] from the WebView's `onWebViewCreated` callback
+///    so handlers are registered before any page JS executes.
+/// 3. Call [send] to dispatch messages to CesiumJS.
+/// 4. Call [dispose] when the parent widget is disposed.
+class BridgeController {
+  InAppWebViewController? _controller;
+
+  /// Attaches [controller] and registers all inbound JS handler callbacks.
+  void registerHandlers(InAppWebViewController controller) {
+    _controller = controller;
+    controller.addJavaScriptHandler(
+      handlerName: InboundMessage.globeReady.handlerName,
+      callback: _onGlobeReady,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: InboundMessage.mapTap.handlerName,
+      callback: _onMapTap,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: InboundMessage.passCalcResult.handlerName,
+      callback: _onPassCalcResult,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: InboundMessage.frameRate.handlerName,
+      callback: _onFrameRate,
+    );
+  }
+
+  /// Dispatches [type] with [payload] to CesiumJS. No-ops if no controller
+  /// is currently attached.
+  Future<void> send(OutboundMessage type, Map<String, dynamic> payload) async {
+    await _controller?.evaluateJavascript(
+      source: buildDispatchSource(type, payload),
+    );
+  }
+
+  /// Builds the JavaScript source string that dispatches a `flutter_message`
+  /// CustomEvent to CesiumJS.
+  ///
+  /// Exposed as a static method so unit tests can verify JSON serialization
+  /// without requiring a live WebView controller.
+  static String buildDispatchSource(
+    OutboundMessage type,
+    Map<String, dynamic> payload,
+  ) {
+    final detail = jsonEncode({'type': type.messageName, 'payload': payload});
+    return "window.dispatchEvent(new CustomEvent('flutter_message', { detail: $detail }));";
+  }
+
+  /// Releases the controller reference. Call from the parent widget's dispose.
+  void dispose() {
+    _controller = null;
+  }
+
+  // ── Inbound handlers ──────────────────────────────────────────────────────
+
+  void _onGlobeReady(List<dynamic> args) {
+    debugPrint('BridgeController: GLOBE_READY received');
+    // WOE-006: Proof-of-concept — send a hardcoded test position 3 s after
+    // the globe reports ready. Replaced by PositionController in WOE-2.7.
+    Future.delayed(const Duration(seconds: 3), () {
+      send(OutboundMessage.updatePosition, {
+        'lat': 51.5,
+        'lon': -0.1,
+        'altKm': 420,
+        'source': 'test',
+      });
+    });
+  }
+
+  void _onMapTap(List<dynamic> args) {
+    // Forwarded to PinController in a later issue.
+    debugPrint('BridgeController: MAP_TAP received: ${args.firstOrNull}');
+  }
+
+  void _onPassCalcResult(List<dynamic> args) {
+    // Forwarded to PassController in a later issue.
+    debugPrint(
+      'BridgeController: PASS_CALC_RESULT received: ${args.firstOrNull}',
+    );
+  }
+
+  void _onFrameRate(List<dynamic> args) {
+    debugPrint('BridgeController: FRAME_RATE received: ${args.firstOrNull}');
+  }
+}
