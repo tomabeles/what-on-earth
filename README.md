@@ -45,6 +45,34 @@ flutter run \
 
 See `.env.example` for the full list of supported variables and their defaults.
 
+### Running on a physical device
+
+Physical device testing is required for Android WebView transparency (emulator behavior differs from hardware — see TECH_SPEC §3.3).
+
+**Android:**
+
+1. Enable **Developer Options** on the device (Settings → About Phone → tap Build Number 7 times).
+2. Enable **USB Debugging** (Settings → Developer Options → USB Debugging).
+3. Connect via USB, then confirm the device is listed:
+   ```bash
+   flutter devices
+   ```
+4. Run on the device:
+   ```bash
+   flutter run -d <device-id>
+   ```
+
+**iOS:**
+
+1. Open `ios/Runner.xcworkspace` in Xcode.
+2. Under **Signing & Capabilities**, select your personal or team development account.
+3. Build to the device once from Xcode to install the developer certificate.
+4. On the device: Settings → General → VPN & Device Management → trust your developer certificate.
+5. Run from the terminal:
+   ```bash
+   flutter run -d <device-id>
+   ```
+
 ### Useful commands
 
 | Command | Description |

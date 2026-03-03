@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'globe/globe_view.dart';
+
 class WhatOnEarthApp extends StatelessWidget {
   const WhatOnEarthApp({super.key});
 
@@ -17,9 +19,8 @@ class WhatOnEarthApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const Scaffold(
-        body: Center(
-          child: Text('What On Earth?!'),
-        ),
+        backgroundColor: Colors.black,
+        body: GlobeView(),
       ),
     );
   }
