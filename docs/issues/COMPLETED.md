@@ -25,3 +25,8 @@
 | WOE-015 | Position Source Status Indicator Widget | 0220e5d |
 | WOE-048 | Onboarding State Persistence and Completion Banner | e9256f5 |
 | WOE-081 | Settings -- Position Source Section | e9256f5 |
+| WOE-017 | SensorFusionEngine in Background Isolate | 931467f |
+| WOE-025 | Natural Earth GeoJSON Download and Preprocessing | 931467f |
+| WOE-028 | shelf Tile Server in Background Isolate | 931467f |
+| WOE-034 | Drift Database Schema Generation (Pins and TileMetadata) | 931467f |
+| WOE-069 | SET_SKYBOX Bridge Message + Viewer Init | 931467f |
