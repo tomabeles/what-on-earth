@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../globe/bridge.dart';
 import 'iss_live_source.dart';
 import 'position_source.dart';
+import 'static_position_source.dart';
 import 'tle_manager.dart';
 import 'tle_source.dart';
 
@@ -48,6 +50,60 @@ PositionSource livePositionSource(Ref ref) => ISSLiveSource.create();
 /// replaced with a shared bridge provider in WOE-014.
 @riverpod
 PositionSource tlePositionSource(Ref ref) => _DeferredTleSource();
+
+/// Static coordinates stored in SharedPreferences. Defaults to ISS orbital
+/// altitude over London (51.5°N, −0.1°E, 420 km). Updated via Settings
+/// screen (WOE-049).
+@riverpod
+Future<({double lat, double lon, double altKm})> staticCoordinates(
+    Ref ref) async {
+  final prefs = await SharedPreferences.getInstance();
+  return (
+    lat: prefs.getDouble('static_lat') ?? 51.5,
+    lon: prefs.getDouble('static_lon') ?? -0.1,
+    altKm: prefs.getDouble('static_alt_km') ?? 420.0,
+  );
+}
+
+/// Production [StaticPositionSource] instance. Override in tests with a fake.
+@riverpod
+PositionSource staticPositionSource(Ref ref) => _DeferredStaticSource(ref);
+
+/// Lazy-resolved [StaticPositionSource] that reads coordinates from
+/// SharedPreferences on first [start].
+class _DeferredStaticSource implements PositionSource {
+  _DeferredStaticSource(this._ref);
+  final Ref _ref;
+  StaticPositionSource? _inner;
+
+  @override
+  PositionSourceType get type => PositionSourceType.static;
+
+  @override
+  Stream<OrbitalPosition> get positionStream =>
+      _inner?.positionStream ?? const Stream.empty();
+
+  @override
+  Future<void> start() async {
+    if (_inner == null) {
+      final coords = await _ref.read(staticCoordinatesProvider.future);
+      _inner = StaticPositionSource(
+        position: OrbitalPosition(
+          latDeg: coords.lat,
+          lonDeg: coords.lon,
+          altKm: coords.altKm,
+          timestamp: DateTime.now().toUtc(),
+          sourceType: PositionSourceType.static,
+        ),
+        interval: const Duration(seconds: 10),
+      );
+    }
+    await _inner!.start();
+  }
+
+  @override
+  Future<void> stop() async => _inner?.stop();
+}
 
 /// Lazy-resolved [TLESource] that initialises its [TleManager] asynchronously
 /// on first [start] so the provider can be constructed synchronously.
@@ -184,6 +240,8 @@ class PositionController extends _$PositionController {
       await _switchTo(ref.read(livePositionSourceProvider));
     } else if (mode == PositionSourceType.estimated) {
       await _switchTo(ref.read(tlePositionSourceProvider));
+    } else if (mode == PositionSourceType.static) {
+      await _switchTo(ref.read(staticPositionSourceProvider));
     }
   }
 }

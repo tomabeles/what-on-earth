@@ -56,6 +56,7 @@ OrbitalPosition _pos(PositionSourceType type) => OrbitalPosition(
 
 const _live = PositionSourceType.live;
 const _estimated = PositionSourceType.estimated;
+const _static = PositionSourceType.static;
 
 /// Drains all pending microtasks and timer events so fire-and-forget async
 /// chains (like the unawaited `_switchTo` inside `_onPosition`) settle.
@@ -72,16 +73,19 @@ void main() {
   group('PositionController', () {
     late _FakeSource liveSource;
     late _FakeSource tleSource;
+    late _FakeSource staticSource;
     late ProviderContainer container;
 
     setUp(() async {
       liveSource = _FakeSource(_live);
       tleSource = _FakeSource(_estimated);
+      staticSource = _FakeSource(_static);
 
       container = ProviderContainer(
         overrides: [
           livePositionSourceProvider.overrideWithValue(liveSource),
           tlePositionSourceProvider.overrideWithValue(tleSource),
+          staticPositionSourceProvider.overrideWithValue(staticSource),
         ],
       );
 
@@ -207,6 +211,45 @@ void main() {
           .setSourceMode(null);
 
       expect(liveSource.startCalls, 2);
+    });
+
+    test('setSourceMode(static) switches to StaticPositionSource', () async {
+      await container
+          .read(positionControllerProvider.notifier)
+          .setSourceMode(_static);
+
+      expect(staticSource.startCalls, 1);
+      expect(liveSource.stopCalls, 1);
+    });
+
+    test('setSourceMode(live) after static switches back to ISSLiveSource',
+        () async {
+      await container
+          .read(positionControllerProvider.notifier)
+          .setSourceMode(_static);
+      await container
+          .read(positionControllerProvider.notifier)
+          .setSourceMode(_live);
+
+      expect(liveSource.startCalls, 2);
+      expect(staticSource.stopCalls, 1);
+    });
+
+    test('static source emits positions with static type', () async {
+      await container
+          .read(positionControllerProvider.notifier)
+          .setSourceMode(_static);
+
+      final notifier = container.read(positionControllerProvider.notifier);
+      final received = <OrbitalPosition>[];
+      final sub = notifier.positionStream.listen(received.add);
+
+      staticSource.emit(_pos(_static));
+      await _drain();
+
+      expect(received.length, 1);
+      expect(received.first.sourceType, _static);
+      await sub.cancel();
     });
   });
 }

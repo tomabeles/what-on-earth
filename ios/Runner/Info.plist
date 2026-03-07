@@ -4,6 +4,8 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>What On Earth uses your camera to overlay the ISS position on your live view.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>What On Earth uses device motion sensors to orient the AR globe view.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

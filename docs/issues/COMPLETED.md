@@ -21,3 +21,5 @@
 | WOE-014 | Wire PositionController to GlobeView | b51d023 |
 | WOE-022 | Camera Plugin Integration and Full-Screen Preview | 7efae5e |
 | WOE-023 | ARView Stack Widget Assembly | 7efae5e |
+| WOE-016 | StaticSource for Training Mode | e9955cf |
+| WOE-015 | Position Source Status Indicator Widget | 0220e5d |
