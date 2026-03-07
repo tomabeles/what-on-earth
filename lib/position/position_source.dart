@@ -92,9 +92,9 @@ class OrbitalPosition {
 
 /// Contract implemented by all ISS position data sources.
 ///
-/// Concrete implementations: `ISSLiveSource` (WOE-009), `TLESource` (WOE-011),
+/// Concrete implementations: `ISSLiveSource` (WOE-009), `TLESource` (WOE-012),
 /// `StaticSource` (WOE-015). Selection is managed by `PositionController`
-/// (WOE-012).
+/// (WOE-013).
 abstract class PositionSource {
   /// Continuous stream of orbital position snapshots.
   Stream<OrbitalPosition> get positionStream;

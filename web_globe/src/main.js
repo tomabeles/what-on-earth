@@ -59,13 +59,13 @@ viewer.camera.setView({
 const handlers = {
   UPDATE_POSITION(payload) {
     console.log('UPDATE_POSITION received', payload);
-    // Camera movement wired in WOE-2.7; log confirms bridge works.
+    // Camera movement wired in WOE-014; log confirms bridge works.
   },
   UPDATE_ORIENTATION(payload) {
-    // Implemented in WOE-3.3.
+    // Implemented in WOE-019.
   },
   SET_TLE(payload) {
-    // Implemented in WOE-2.5.
+    // Implemented in WOE-012.
   },
   TOGGLE_LAYER(payload) {
     // Implemented in a later issue.

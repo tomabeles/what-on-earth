@@ -110,7 +110,7 @@ class BridgeController {
   void _onGlobeReady(List<dynamic> args) {
     debugPrint('BridgeController: GLOBE_READY received');
     // WOE-006: Proof-of-concept — send a hardcoded test position 3 s after
-    // the globe reports ready. Replaced by PositionController in WOE-2.7.
+    // the globe reports ready. Replaced by PositionController in WOE-014.
     Future.delayed(const Duration(seconds: 3), () {
       send(OutboundMessage.updatePosition, {
         'lat': 51.5,
