@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Permits cleartext HTTP only for localhost so the in-app shelf server
+    (port 8080 for the CesiumJS globe, port 8765 for tile serving) is
+    reachable from the WebView on Android 9+ (API 28+), which blocks all
+    cleartext traffic by default.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
