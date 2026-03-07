@@ -23,3 +23,5 @@
 | WOE-023 | ARView Stack Widget Assembly | 7efae5e |
 | WOE-016 | StaticSource for Training Mode | e9955cf |
 | WOE-015 | Position Source Status Indicator Widget | 0220e5d |
+| WOE-048 | Onboarding State Persistence and Completion Banner | e9256f5 |
+| WOE-081 | Settings -- Position Source Section | e9256f5 |
