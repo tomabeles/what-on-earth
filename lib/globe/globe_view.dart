@@ -14,8 +14,13 @@ import 'bridge.dart';
 /// CesiumJS bundle from `assets/globe/`. URL paths are rooted at `/` so
 /// that the Vite-built `index.html` (which uses `base: '/'`) resolves
 /// all asset references without path-prefix mangling.
+///
+/// Pass a [bridge] to inject an external [BridgeController] (e.g. from
+/// [ARScreen] or a test). When omitted, [GlobeView] creates and owns its own.
 class GlobeView extends StatefulWidget {
-  const GlobeView({super.key});
+  const GlobeView({super.key, this.bridge});
+
+  final BridgeController? bridge;
 
   @override
   State<GlobeView> createState() => _GlobeViewState();
@@ -23,11 +28,14 @@ class GlobeView extends StatefulWidget {
 
 class _GlobeViewState extends State<GlobeView> {
   HttpServer? _server;
-  final _bridge = BridgeController();
+  late final BridgeController _bridge;
+  late final bool _ownsBridge;
 
   @override
   void initState() {
     super.initState();
+    _ownsBridge = widget.bridge == null;
+    _bridge = widget.bridge ?? BridgeController();
     _startServer();
   }
 
@@ -38,7 +46,7 @@ class _GlobeViewState extends State<GlobeView> {
 
   @override
   void dispose() {
-    _bridge.dispose();
+    if (_ownsBridge) _bridge.dispose();
     _server?.close(force: true);
     super.dispose();
   }

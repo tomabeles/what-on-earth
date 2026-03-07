@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'globe/globe_view.dart';
+import 'screens/ar_screen.dart';
 
 class WhatOnEarthApp extends StatelessWidget {
   const WhatOnEarthApp({super.key});
@@ -18,10 +18,7 @@ class WhatOnEarthApp extends StatelessWidget {
         brightness: Brightness.dark,
         useMaterial3: true,
       ),
-      home: const Scaffold(
-        backgroundColor: Colors.black,
-        body: GlobeView(),
-      ),
+      home: const ARScreen(),
     );
   }
 }
