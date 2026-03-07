@@ -11,3 +11,4 @@
 | WOE-007 | GitHub Actions CI Pipeline | 24c7c18 |
 | WOE-008 | OrbitalPosition Model and PositionSource Interface | 0abcbb1 |
 | WOE-060 | StaticPositionSource | 216b1dc |
+| WOE-061 | AR Screen Scaffold | 7efae5e |
