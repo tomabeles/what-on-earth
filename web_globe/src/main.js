@@ -58,8 +58,18 @@ viewer.camera.setView({
 
 const handlers = {
   UPDATE_POSITION(payload) {
-    console.log('UPDATE_POSITION received', payload);
-    // Camera movement wired in WOE-014; log confirms bridge works.
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(
+        payload.lon,
+        payload.lat,
+        payload.altKm * 1000,
+      ),
+      orientation: {
+        heading: 0,
+        pitch: Cesium.Math.toRadians(-90),
+        roll: 0,
+      },
+    });
   },
   UPDATE_ORIENTATION(payload) {
     // Implemented in WOE-019.
