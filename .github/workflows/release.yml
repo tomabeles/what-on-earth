@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   release:
@@ -16,10 +16,13 @@ jobs:
           fetch-depth: 0
 
       - name: Build signed APK
-        run: echo "TODO: configure signing and upload (WOE-056)"
+        run: |
+          echo "TODO: configure signing and upload (WOE-056)"
 
       - name: Build signed IPA
-        run: echo "TODO: configure signing and upload (WOE-056)"
+        run: |
+          echo "TODO: configure signing and upload (WOE-056)"
 
       - name: Upload to distribution
-        run: echo "TODO: configure signing and upload (WOE-056)"
+        run: |
+          echo "TODO: configure signing and upload (WOE-056)"
