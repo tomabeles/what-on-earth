@@ -110,6 +110,136 @@ final class TlePositionSourceProvider
 
 String _$tlePositionSourceHash() => r'37127cfbab520b5aa5b977bd7b9089ae6aca710e';
 
+/// Static coordinates stored in SharedPreferences. Defaults to ISS orbital
+/// altitude over London (51.5°N, −0.1°E, 420 km). Updated via Settings
+/// screen (WOE-049).
+
+@ProviderFor(staticCoordinates)
+final staticCoordinatesProvider = StaticCoordinatesProvider._();
+
+/// Static coordinates stored in SharedPreferences. Defaults to ISS orbital
+/// altitude over London (51.5°N, −0.1°E, 420 km). Updated via Settings
+/// screen (WOE-049).
+
+final class StaticCoordinatesProvider extends $FunctionalProvider<
+        AsyncValue<
+            ({
+              double altKm,
+              double lat,
+              double lon,
+            })>,
+        ({
+          double altKm,
+          double lat,
+          double lon,
+        }),
+        FutureOr<
+            ({
+              double altKm,
+              double lat,
+              double lon,
+            })>>
+    with
+        $FutureModifier<
+            ({
+              double altKm,
+              double lat,
+              double lon,
+            })>,
+        $FutureProvider<
+            ({
+              double altKm,
+              double lat,
+              double lon,
+            })> {
+  /// Static coordinates stored in SharedPreferences. Defaults to ISS orbital
+  /// altitude over London (51.5°N, −0.1°E, 420 km). Updated via Settings
+  /// screen (WOE-049).
+  StaticCoordinatesProvider._()
+      : super(
+          from: null,
+          argument: null,
+          retry: null,
+          name: r'staticCoordinatesProvider',
+          isAutoDispose: true,
+          dependencies: null,
+          $allTransitiveDependencies: null,
+        );
+
+  @override
+  String debugGetCreateSourceHash() => _$staticCoordinatesHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<
+      ({
+        double altKm,
+        double lat,
+        double lon,
+      })> $createElement(
+          $ProviderPointer pointer) =>
+      $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<
+      ({
+        double altKm,
+        double lat,
+        double lon,
+      })> create(Ref ref) {
+    return staticCoordinates(ref);
+  }
+}
+
+String _$staticCoordinatesHash() => r'56d4526e81aa78ac8e9c65baac8050303c09a941';
+
+/// Production [StaticPositionSource] instance. Override in tests with a fake.
+
+@ProviderFor(staticPositionSource)
+final staticPositionSourceProvider = StaticPositionSourceProvider._();
+
+/// Production [StaticPositionSource] instance. Override in tests with a fake.
+
+final class StaticPositionSourceProvider
+    extends $FunctionalProvider<PositionSource, PositionSource, PositionSource>
+    with $Provider<PositionSource> {
+  /// Production [StaticPositionSource] instance. Override in tests with a fake.
+  StaticPositionSourceProvider._()
+      : super(
+          from: null,
+          argument: null,
+          retry: null,
+          name: r'staticPositionSourceProvider',
+          isAutoDispose: true,
+          dependencies: null,
+          $allTransitiveDependencies: null,
+        );
+
+  @override
+  String debugGetCreateSourceHash() => _$staticPositionSourceHash();
+
+  @$internal
+  @override
+  $ProviderElement<PositionSource> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  PositionSource create(Ref ref) {
+    return staticPositionSource(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(PositionSource value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<PositionSource>(value),
+    );
+  }
+}
+
+String _$staticPositionSourceHash() =>
+    r'3c61e9729f78bca6c8e55b618e5c7b423a91f29e';
+
 /// Manages the active [PositionSource] and exposes a unified position stream.
 ///
 /// State is [AsyncValue<PositionSourceStatus>]; it is `loading` briefly while
@@ -178,7 +308,7 @@ final class PositionControllerProvider
 }
 
 String _$positionControllerHash() =>
-    r'3c71d4301b7b5b909c6c6f07eb8ac61d9ce9a1ee';
+    r'4747d06ef93735b9ddd4ad0d1e9eb00c1bde3f22';
 
 /// Manages the active [PositionSource] and exposes a unified position stream.
 ///
