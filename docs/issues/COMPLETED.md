@@ -18,3 +18,4 @@
 | WOE-011 | satellite.js SGP4 Propagator and Bridge Messages | 67b1b4d |
 | WOE-012 | TLESource Dart Class | 52c3694 |
 | WOE-013 | PositionController Riverpod Provider with Live/TLE Fallback | 047b1e4 |
+| WOE-014 | Wire PositionController to GlobeView | b51d023 |

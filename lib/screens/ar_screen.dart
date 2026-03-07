@@ -2,28 +2,31 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../globe/bridge.dart';
 import '../globe/globe_view.dart';
+import '../position/position_controller.dart';
 import '../position/position_source.dart';
-import '../position/static_position_source.dart';
 
 /// Full-screen AR view: live camera feed beneath the transparent CesiumJS
-/// globe, with a satellite marker driven by [StaticPositionSource].
+/// globe, with the camera driven by [PositionController].
+///
+/// Position updates are only forwarded to CesiumJS after `GLOBE_READY` is
+/// received, ensuring the WebView is fully initialised (TECH_SPEC §8.1).
 ///
 /// On Simulator (no camera hardware) or when permission is denied the camera
 /// layer degrades to a black fallback — the globe still renders above it.
-class ARScreen extends StatefulWidget {
+class ARScreen extends ConsumerStatefulWidget {
   const ARScreen({super.key});
 
   @override
-  State<ARScreen> createState() => _ARScreenState();
+  ConsumerState<ARScreen> createState() => _ARScreenState();
 }
 
-class _ARScreenState extends State<ARScreen> {
+class _ARScreenState extends ConsumerState<ARScreen> {
   final _bridge = BridgeController();
-  final _positionSource = StaticPositionSource();
 
   CameraController? _camera;
   StreamSubscription<OrbitalPosition>? _positionSub;
@@ -62,8 +65,12 @@ class _ARScreenState extends State<ARScreen> {
   }
 
   Future<void> _startPosition() async {
-    await _positionSource.start();
-    _positionSub = _positionSource.positionStream.listen((pos) {
+    // Wait for CesiumJS to be ready before sending any positions.
+    await _bridge.globeReady;
+    if (!mounted) return;
+
+    final notifier = ref.read(positionControllerProvider.notifier);
+    _positionSub = notifier.positionStream.listen((pos) {
       _bridge.send(OutboundMessage.updatePosition, pos.toJson());
     });
   }
@@ -71,7 +78,6 @@ class _ARScreenState extends State<ARScreen> {
   @override
   void dispose() {
     _positionSub?.cancel();
-    _positionSource.stop();
     _camera?.dispose();
     _bridge.dispose();
     super.dispose();
