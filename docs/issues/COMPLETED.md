@@ -20,3 +20,4 @@
 | WOE-013 | PositionController Riverpod Provider with Live/TLE Fallback | 047b1e4 |
 | WOE-014 | Wire PositionController to GlobeView | b51d023 |
 | WOE-016 | StaticSource for Training Mode | e9955cf |
+| WOE-015 | Position Source Status Indicator Widget | 0220e5d |
