@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -18,6 +19,13 @@ class TleManager {
   TleManager({required Dio dio, required Directory documentsDir})
       : _dio = dio,
         _documentsDir = documentsDir;
+
+  final _tleUpdates = StreamController<String>.broadcast();
+
+  /// Emits the raw TLE text each time [fetchAndStore] writes a new file
+  /// successfully. [TLESource] listens to this to re-send SET_TLE to the
+  /// WebView without polling.
+  Stream<String> get tleUpdates => _tleUpdates.stream;
 
   /// Creates a production-ready instance with a 10-second request timeout.
   factory TleManager.create(Directory documentsDir) => TleManager(
@@ -66,6 +74,7 @@ class TleManager {
       await _tleFile.writeAsString(tleText);
       await _timestampFile
           .writeAsString(DateTime.now().toUtc().toIso8601String());
+      if (!_tleUpdates.isClosed) _tleUpdates.add(tleText);
     } catch (e) {
       debugPrint('TleManager.fetchAndStore: error — $e (existing file kept)');
     }
