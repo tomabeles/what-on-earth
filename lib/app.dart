@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/ar_screen.dart';
+import 'shared/theme.dart';
 
 class WhatOnEarthApp extends StatelessWidget {
   const WhatOnEarthApp({super.key});
@@ -10,14 +11,7 @@ class WhatOnEarthApp extends StatelessWidget {
     return MaterialApp(
       title: 'What On Earth?!',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1A73E8),
-          brightness: Brightness.dark,
-        ),
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
+      theme: buildThemeData(AppThemes.night),
       home: const ARScreen(),
     );
   }
