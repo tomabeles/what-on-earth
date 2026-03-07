@@ -4,6 +4,10 @@
 
 import * as Cesium from 'cesium';
 import * as satellite from 'satellite.js';
+import { initTLE, propagateNow } from './satellite_propagator.js';
+
+// Active SGP4 propagation interval handle; cleared on each new SET_TLE.
+let _propagationInterval = null;
 
 // Disable Ion — all imagery is served locally (no token needed).
 Cesium.Ion.defaultAccessToken = undefined;
@@ -75,7 +79,16 @@ const handlers = {
     // Implemented in WOE-019.
   },
   SET_TLE(payload) {
-    // Implemented in WOE-012.
+    // Clear any running propagation interval before starting a new one so
+    // multiple SET_TLE messages don't stack up duplicate intervals.
+    clearInterval(_propagationInterval);
+    initTLE(payload.line1, payload.line2);
+    _propagationInterval = setInterval(() => {
+      const pos = propagateNow();
+      if (pos) {
+        window.flutter_inappwebview.callHandler('POSITION_UPDATE', pos);
+      }
+    }, 2000);
   },
   TOGGLE_LAYER(payload) {
     // Implemented in a later issue.

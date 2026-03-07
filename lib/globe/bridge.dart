@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../position/position_source.dart';
+
 /// Outbound message types — Flutter → CesiumJS via `flutter_message` CustomEvent.
 ///
 /// See TECH_SPEC §8.1 for payload schemas.
@@ -35,7 +37,8 @@ enum InboundMessage {
   globeReady,
   mapTap,
   passCalcResult,
-  frameRate;
+  frameRate,
+  positionUpdate;
 
   /// The handler name registered with [InAppWebViewController.addJavaScriptHandler].
   String get handlerName => switch (this) {
@@ -43,6 +46,7 @@ enum InboundMessage {
         InboundMessage.mapTap => 'MAP_TAP',
         InboundMessage.passCalcResult => 'PASS_CALC_RESULT',
         InboundMessage.frameRate => 'FRAME_RATE',
+        InboundMessage.positionUpdate => 'POSITION_UPDATE',
       };
 }
 
@@ -57,6 +61,13 @@ enum InboundMessage {
 /// 4. Call [dispose] when the parent widget is disposed.
 class BridgeController {
   InAppWebViewController? _controller;
+
+  final _propagatedPositions = StreamController<OrbitalPosition>.broadcast();
+
+  /// Positions propagated by the JS satellite.js SGP4 engine via
+  /// `POSITION_UPDATE` messages. [TLESource] (WOE-012) listens to this.
+  Stream<OrbitalPosition> get propagatedPositions =>
+      _propagatedPositions.stream;
 
   /// Attaches [controller] and registers all inbound JS handler callbacks.
   void registerHandlers(InAppWebViewController controller) {
@@ -76,6 +87,10 @@ class BridgeController {
     controller.addJavaScriptHandler(
       handlerName: InboundMessage.frameRate.handlerName,
       callback: _onFrameRate,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: InboundMessage.positionUpdate.handlerName,
+      callback: _onPositionUpdate,
     );
   }
 
@@ -107,9 +122,11 @@ class BridgeController {
     return "window.dispatchEvent(new CustomEvent('flutter_message', { detail: $detail }));";
   }
 
-  /// Releases the controller reference. Call from the parent widget's dispose.
+  /// Releases the controller reference and closes streams.
+  /// Call from the parent widget's dispose.
   void dispose() {
     _controller = null;
+    _propagatedPositions.close();
   }
 
   // ── Inbound handlers ──────────────────────────────────────────────────────
@@ -142,5 +159,16 @@ class BridgeController {
 
   void _onFrameRate(List<dynamic> args) {
     debugPrint('BridgeController: FRAME_RATE received: ${args.firstOrNull}');
+  }
+
+  void _onPositionUpdate(List<dynamic> args) {
+    final raw = args.firstOrNull;
+    if (raw == null) return;
+    try {
+      final pos = OrbitalPosition.fromJson(Map<String, dynamic>.from(raw as Map));
+      if (!_propagatedPositions.isClosed) _propagatedPositions.add(pos);
+    } catch (e) {
+      debugPrint('BridgeController: POSITION_UPDATE parse error: $e');
+    }
   }
 }
