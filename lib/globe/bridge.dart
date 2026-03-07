@@ -62,6 +62,13 @@ enum InboundMessage {
 class BridgeController {
   InAppWebViewController? _controller;
 
+  final _globeReady = Completer<void>();
+
+  /// Completes when the CesiumJS globe fires `GLOBE_READY`. Await this before
+  /// sending any bridge messages to avoid dispatching into an uninitialised
+  /// WebView.
+  Future<void> get globeReady => _globeReady.future;
+
   final _propagatedPositions = StreamController<OrbitalPosition>.broadcast();
 
   /// Positions propagated by the JS satellite.js SGP4 engine via
@@ -133,16 +140,7 @@ class BridgeController {
 
   void _onGlobeReady(List<dynamic> args) {
     debugPrint('BridgeController: GLOBE_READY received');
-    // WOE-006: Proof-of-concept — send a hardcoded test position 3 s after
-    // the globe reports ready. Replaced by PositionController in WOE-014.
-    Future.delayed(const Duration(seconds: 3), () {
-      send(OutboundMessage.updatePosition, {
-        'lat': 51.5,
-        'lon': -0.1,
-        'altKm': 420,
-        'source': 'test',
-      });
-    });
+    if (!_globeReady.isCompleted) _globeReady.complete();
   }
 
   void _onMapTap(List<dynamic> args) {
