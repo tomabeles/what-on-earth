@@ -15,3 +15,4 @@
 | WOE-062 | Integration Test Harness | b038bb7 |
 | WOE-009 | ISSLiveSource Implementation | d9a4648 |
 | WOE-010 | TLE Download, File Storage, and Refresh Daemon | ced7d60 |
+| WOE-011 | satellite.js SGP4 Propagator and Bridge Messages | 67b1b4d |
