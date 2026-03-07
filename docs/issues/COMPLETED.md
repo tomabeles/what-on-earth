@@ -12,3 +12,4 @@
 | WOE-008 | OrbitalPosition Model and PositionSource Interface | 0abcbb1 |
 | WOE-060 | StaticPositionSource | 216b1dc |
 | WOE-061 | AR Screen Scaffold | 7efae5e |
+| WOE-062 | Integration Test Harness | b038bb7 |
