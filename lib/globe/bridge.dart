@@ -16,7 +16,8 @@ enum OutboundMessage {
   toggleLayer,
   syncPins,
   setMode,
-  requestPassCalc;
+  requestPassCalc,
+  setSkybox;
 
   /// The `type` string used in the JS `flutter_message` event detail object.
   String get messageName => switch (this) {
@@ -27,6 +28,7 @@ enum OutboundMessage {
         OutboundMessage.syncPins => 'SYNC_PINS',
         OutboundMessage.setMode => 'SET_MODE',
         OutboundMessage.requestPassCalc => 'REQUEST_PASS_CALC',
+        OutboundMessage.setSkybox => 'SET_SKYBOX',
       };
 }
 
@@ -128,6 +130,12 @@ class BridgeController {
     final detail = jsonEncode({'type': type.messageName, 'payload': payload});
     return "window.dispatchEvent(new CustomEvent('flutter_message', { detail: $detail }));";
   }
+
+  /// Toggles the CesiumJS star skybox on or off. When the skybox is enabled
+  /// the scene background is opaque black; when disabled it is transparent
+  /// (for AR camera compositing).
+  Future<void> setSkybox(bool enabled) =>
+      send(OutboundMessage.setSkybox, {'enabled': enabled});
 
   /// Releases the controller reference and closes streams.
   /// Call from the parent widget's dispose.
