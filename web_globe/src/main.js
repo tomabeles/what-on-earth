@@ -16,7 +16,6 @@ Cesium.Ion.defaultAccessToken = undefined;
 const viewer = new Cesium.Viewer('cesiumContainer', {
   baseLayer: false,                              // no default imagery (no Ion Bing Maps)
   terrainProvider: new Cesium.EllipsoidTerrainProvider(), // flat ellipsoid, no Ion terrain
-  skyBox: false,                                 // disables star background
   skyAtmosphere: false,
   baseLayerPicker: false,
   geocoder: false,
@@ -35,6 +34,10 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
   },
 });
 
+// Skybox (star field) is available but hidden by default — camera feed is
+// visible through the transparent background. SET_SKYBOX toggles it on when
+// the camera preview is paused (WOE-077).
+viewer.scene.skyBox.show = false;
 viewer.scene.backgroundColor = new Cesium.Color(0, 0, 0, 0);
 viewer.scene.highDynamicRange = false;           // HDR breaks alpha compositing
 viewer.scene.fog.enabled = false;
@@ -101,6 +104,12 @@ const handlers = {
   },
   REQUEST_PASS_CALC(payload) {
     // Implemented in a later issue.
+  },
+  SET_SKYBOX({ enabled }) {
+    viewer.scene.skyBox.show = enabled;
+    viewer.scene.backgroundColor = enabled
+      ? new Cesium.Color(0, 0, 0, 1)   // opaque black behind stars
+      : new Cesium.Color(0, 0, 0, 0);  // transparent for AR camera
   },
 };
 
