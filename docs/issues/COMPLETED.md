@@ -19,3 +19,4 @@
 | WOE-012 | TLESource Dart Class | 52c3694 |
 | WOE-013 | PositionController Riverpod Provider with Live/TLE Fallback | 047b1e4 |
 | WOE-014 | Wire PositionController to GlobeView | b51d023 |
+| WOE-016 | StaticSource for Training Mode | e9955cf |
