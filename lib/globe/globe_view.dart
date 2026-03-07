@@ -54,6 +54,7 @@ class _GlobeViewState extends State<GlobeView> {
   @override
   Widget build(BuildContext context) {
     return InAppWebView(
+      key: const Key('globe_view'),
       initialUrlRequest: URLRequest(
         url: WebUri('http://localhost:8080/index.html'),
       ),

@@ -99,3 +99,67 @@ jobs:
 
       - name: Build iOS (debug, no-codesign smoke build)
         run: flutter build ios --no-codesign --debug
+
+  # ── Integration tests on iOS Simulator (macOS) ───────────────────────────────
+  integration-test:
+    name: Integration tests (iOS Simulator)
+    runs-on: macos-latest
+    needs: build   # only run if analyze/test/APK pass
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/cache@v4
+        with:
+          path: web_globe/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('web_globe/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - name: Build CesiumJS bundle
+        run: bash scripts/build_globe.sh
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Code generation (drift + riverpod)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Boot iOS Simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | \
+            python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          iphones = [d for devs in data['devices'].values() for d in devs
+                     if 'iPhone' in d.get('name', '') and d.get('isAvailable', False)]
+          print(iphones[0]['udid'] if iphones else '')
+          ")
+          if [ -z "$UDID" ]; then echo "No available iPhone Simulator found" && exit 1; fi
+          xcrun simctl boot "$UDID" || true
+          echo "SIMULATOR_UDID=$UDID" >> $GITHUB_ENV
+
+      - name: Run integration tests
+        run: flutter test integration_test/ -d "$SIMULATOR_UDID" --reporter=expanded
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshots
+          path: "*.png"

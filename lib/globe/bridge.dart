@@ -79,9 +79,16 @@ class BridgeController {
     );
   }
 
+  /// Test hook: called by [send] before dispatching to the WebView.
+  /// Set to null to deregister. Never set this in production code.
+  @visibleForTesting
+  static void Function(OutboundMessage type, Map<String, dynamic> payload)?
+      onSend;
+
   /// Dispatches [type] with [payload] to CesiumJS. No-ops if no controller
   /// is currently attached.
   Future<void> send(OutboundMessage type, Map<String, dynamic> payload) async {
+    onSend?.call(type, payload);
     await _controller?.evaluateJavascript(
       source: buildDispatchSource(type, payload),
     );
