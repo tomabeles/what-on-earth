@@ -37,9 +37,15 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
   },
 });
 
-// Catch render errors so one bad frame doesn't kill the entire render loop.
+// Catch render errors and restart the render loop (CesiumJS stops it by default).
+// Limit restarts to avoid infinite error loops from persistent bad geometry.
+let _renderErrorCount = 0;
 viewer.scene.renderError.addEventListener((scene, error) => {
   console.error('CesiumJS render error (non-fatal):', error);
+  _renderErrorCount++;
+  if (_renderErrorCount <= 5) {
+    setTimeout(() => { viewer.useDefaultRenderLoop = true; }, 0);
+  }
 });
 
 // Skybox (star field) is available but hidden by default — camera feed is

@@ -30,3 +30,31 @@
 | WOE-028 | shelf Tile Server in Background Isolate | 931467f |
 | WOE-034 | Drift Database Schema Generation (Pins and TileMetadata) | 931467f |
 | WOE-069 | SET_SKYBOX Bridge Message + Viewer Init | 931467f |
+| WOE-018 | DeviceOrientation Model and orientationStream | 4445160 |
+| WOE-020 | Magnetometer Calibration Store and Hard-Iron Correction | 4445160 |
+| WOE-026 | CesiumJS GeoJSON Layer Rendering (layers.js) | 4445160 |
+| WOE-029 | CesiumJS Base Raster Tile Imagery Layer Configuration | 4445160 |
+| WOE-030 | TileDownloader Implementation | 4445160 |
+| WOE-035 | PinRepository CRUD Implementation | 4445160 |
+| WOE-064 | Theme Riverpod Provider + Persistence | f49166a |
+| WOE-065 | Speed-Dial NAV FAB Component | f49166a |
+| WOE-067 | Status Bar Widget | f49166a |
+| WOE-068 | Controls Button + Layer Control Panel | f49166a |
+| WOE-070 | Telemetry HUD -- Scaffold, Toggle, Reticle | f49166a |
+| WOE-084 | Calibration Screen UI | f49166a |
+| WOE-019 | Wire orientationStream to CesiumJS Camera | 4f0b6ad |
+| WOE-021 | Magnetometer Interference Detection and UI Banner | 4f0b6ad |
+| WOE-027 | TOGGLE_LAYER Bridge Message and Layer Controls UI | 4f0b6ad |
+| WOE-031 | TileCacheManager with LRU Eviction | 4f0b6ad |
+| WOE-036 | MAP_TAP Bridge Message and Add Pin Bottom Sheet Trigger | 4f0b6ad |
+| WOE-038 | SYNC_PINS Bridge and CesiumJS Pin Entities (pins.js) | 4f0b6ad |
+| WOE-040 | Pass Calculator Bridge Integration | 4f0b6ad |
+| WOE-043 | Supabase Project Setup and Pins Table Schema | 4f0b6ad |
+| WOE-066 | Screen Navigation Routing | 3400bf3 |
+| WOE-071 | Telemetry HUD -- Heading Tape | 3400bf3 |
+| WOE-072 | Telemetry HUD -- Pitch Ladder | 3400bf3 |
+| WOE-073 | Telemetry HUD -- Roll Indicator | 3400bf3 |
+| WOE-074 | Telemetry HUD -- Data Strip | 3400bf3 |
+| WOE-075 | Telemetry HUD -- FPS Counter | 3400bf3 |
+| WOE-077 | Camera Toggle in Control Panel | 3400bf3 |
+| WOE-080 | Settings -- Display Section | 3400bf3 |

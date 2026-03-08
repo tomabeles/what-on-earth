@@ -26,11 +26,23 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
       strokeWidth: 1,
       fill: Cesium.Color.TRANSPARENT,
     });
-    // Disable rhumb line subdivision on polygon geometry to avoid
-    // RangeError in subdivideRhumbLine with degenerate Natural Earth polygons.
+    // Strip polygon geometry entirely — fill is transparent so polygon
+    // primitives serve no purpose and degenerate Natural Earth polygons
+    // crash CesiumJS createGeometry (undefined .length errors).
+    // Convert outlines to lightweight polylines instead.
     for (const entity of borders.entities.values) {
       if (entity.polygon) {
-        entity.polygon.arcType = Cesium.ArcType.NONE;
+        try {
+          const hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
+          if (hierarchy?.positions?.length >= 2) {
+            entity.polyline = new Cesium.PolylineGraphics({
+              positions: hierarchy.positions,
+              width: 1,
+              material: Cesium.Color.WHITE.withAlpha(0.7),
+            });
+          }
+        } catch (_) { /* skip degenerate */ }
+        entity.polygon = undefined;
       }
     }
     viewer.dataSources.add(borders);
@@ -59,12 +71,25 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
       stroke: Cesium.Color.TRANSPARENT,
       strokeWidth: 0,
     });
-    // Disable rhumb line subdivision (same fix as borders above).
+    // GeoJsonDataSource hardcodes arcType = RHUMB, which crashes on
+    // degenerate Natural Earth polygons in subdivideRhumbLine.
+    // Override to GEODESIC (NONE is invalid for polygon geometry).
+    const toRemove = [];
     for (const entity of lakes.entities.values) {
       if (entity.polygon) {
-        entity.polygon.arcType = Cesium.ArcType.NONE;
+        try {
+          const hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
+          if (!hierarchy?.positions || hierarchy.positions.length < 3) {
+            toRemove.push(entity);
+          } else {
+            entity.polygon.arcType = Cesium.ArcType.GEODESIC;
+          }
+        } catch (_) {
+          toRemove.push(entity);
+        }
       }
     }
+    toRemove.forEach(e => lakes.entities.remove(e));
     viewer.dataSources.add(lakes);
     layersRegistry['lakes'] = lakes;
   } catch (e) {
