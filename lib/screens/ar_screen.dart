@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../globe/bridge.dart';
 import '../globe/globe_view.dart';
@@ -44,6 +45,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   @override
   void initState() {
     super.initState();
+    WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startPosition();
     _startOrientation();
@@ -128,6 +130,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     _bridge.fpsNotifier.removeListener(_onFpsChanged);
     _positionSub?.cancel();
     _orientationSub?.cancel();
+    WakelockPlus.disable();
     _bridge.dispose();
     super.dispose();
   }

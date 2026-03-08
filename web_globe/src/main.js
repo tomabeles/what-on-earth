@@ -112,7 +112,7 @@ const handlers = {
       destination: dest,
       orientation: {
         heading: Cesium.Math.toRadians(payload.heading),
-        pitch: Cesium.Math.toRadians(payload.pitch),
+        pitch: Cesium.Math.toRadians(payload.pitch - 90),
         roll: Cesium.Math.toRadians(payload.roll),
       },
     });
