@@ -51,7 +51,7 @@ viewer.scene.globe.baseColor = new Cesium.Color(0.1, 0.1, 0.15, 1.0); // dark oc
 
 // Static camera: ISS orbital altitude (420 km = 420,000 m), looking straight down.
 viewer.camera.setView({
-  destination: Cesium.Cartesian3.fromDegrees(0, 0, 420000),
+  destination: Cesium.Cartesian3.fromDegrees(0, 0, 30000000), // DEBUG: far out to see whole globe
   orientation: {
     heading: Cesium.Math.toRadians(0),
     pitch: Cesium.Math.toRadians(-90),
@@ -65,18 +65,8 @@ viewer.camera.setView({
 
 const handlers = {
   UPDATE_POSITION(payload) {
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(
-        payload.lon,
-        payload.lat,
-        payload.altKm * 1000,
-      ),
-      orientation: {
-        heading: 0,
-        pitch: Cesium.Math.toRadians(-90),
-        roll: 0,
-      },
-    });
+    // DEBUG: ignore position updates to keep the far-out camera view
+    console.log('UPDATE_POSITION ignored (debug)', payload);
   },
   UPDATE_ORIENTATION(payload) {
     // Implemented in WOE-019.

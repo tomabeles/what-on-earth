@@ -69,6 +69,16 @@ class _GlobeViewState extends State<GlobeView> {
         // Register all inbound JS handlers before the page loads.
         _bridge.registerHandlers(controller);
       },
+      onConsoleMessage: (controller, consoleMessage) {
+        debugPrint('WebView console [${consoleMessage.messageLevel}]: '
+            '${consoleMessage.message}');
+      },
+      onReceivedError: (controller, request, error) {
+        debugPrint('WebView error: ${request.url} → ${error.description}');
+      },
+      onReceivedHttpError: (controller, request, response) {
+        debugPrint('WebView HTTP ${response.statusCode}: ${request.url}');
+      },
       onLoadStop: (controller, url) async {
         if (Platform.isAndroid) {
           // WOE-005: Belt-and-suspenders transparency fix for Android WebView.
@@ -91,9 +101,15 @@ class _GlobeViewState extends State<GlobeView> {
 Future<shelf.Response> _serveGlobeAsset(shelf.Request request) async {
   var path = request.requestedUri.path;
   if (path == '/') path = '/index.html';
+  // Cesium.js hardcodes "Assets/" (capital A) but vite-plugin-cesium outputs
+  // to lowercase "assets/". Flutter's asset bundle is case-sensitive on Android.
+  if (path.startsWith('/Assets/')) {
+    path = '/assets/${path.substring(8)}';
+  }
   final assetKey = 'assets/globe$path';
   try {
     final data = await rootBundle.load(assetKey);
+    debugPrint('shelf 200: $assetKey (${data.lengthInBytes} bytes)');
     return shelf.Response.ok(
       data.buffer.asUint8List(),
       headers: {
@@ -101,7 +117,8 @@ Future<shelf.Response> _serveGlobeAsset(shelf.Request request) async {
         'access-control-allow-origin': '*',
       },
     );
-  } catch (_) {
+  } catch (e) {
+    debugPrint('shelf 404: $assetKey — $e');
     return shelf.Response.notFound('$assetKey not found');
   }
 }

@@ -77,4 +77,55 @@ flutter:
 
   assets:
     - assets/globe/
+    - assets/globe/assets/
+    - assets/globe/assets/IAU2006_XYS/
+    - assets/globe/assets/Images/
+    - assets/globe/assets/Textures/
+    - assets/globe/assets/Textures/LensFlare/
+    - assets/globe/assets/Textures/maki/
+    - assets/globe/assets/Textures/NaturalEarthII/
+    - assets/globe/assets/Textures/NaturalEarthII/0/
+    - assets/globe/assets/Textures/NaturalEarthII/0/0/
+    - assets/globe/assets/Textures/NaturalEarthII/0/1/
+    - assets/globe/assets/Textures/NaturalEarthII/1/
+    - assets/globe/assets/Textures/NaturalEarthII/1/0/
+    - assets/globe/assets/Textures/NaturalEarthII/1/1/
+    - assets/globe/assets/Textures/NaturalEarthII/1/2/
+    - assets/globe/assets/Textures/NaturalEarthII/1/3/
+    - assets/globe/assets/Textures/NaturalEarthII/2/
+    - assets/globe/assets/Textures/NaturalEarthII/2/0/
+    - assets/globe/assets/Textures/NaturalEarthII/2/1/
+    - assets/globe/assets/Textures/NaturalEarthII/2/2/
+    - assets/globe/assets/Textures/NaturalEarthII/2/3/
+    - assets/globe/assets/Textures/NaturalEarthII/2/4/
+    - assets/globe/assets/Textures/NaturalEarthII/2/5/
+    - assets/globe/assets/Textures/NaturalEarthII/2/6/
+    - assets/globe/assets/Textures/NaturalEarthII/2/7/
+    - assets/globe/assets/Textures/SkyBox/
+    - assets/globe/ThirdParty/
+    - assets/globe/ThirdParty/Workers/
+    - assets/globe/Widgets/
+    - assets/globe/Widgets/Animation/
+    - assets/globe/Widgets/BaseLayerPicker/
+    - assets/globe/Widgets/Cesium3DTilesInspector/
+    - assets/globe/Widgets/CesiumInspector/
+    - assets/globe/Widgets/CesiumWidget/
+    - assets/globe/Widgets/FullscreenButton/
+    - assets/globe/Widgets/Geocoder/
+    - assets/globe/Widgets/I3SBuildingSceneLayerExplorer/
+    - assets/globe/Widgets/Images/
+    - assets/globe/Widgets/Images/ImageryProviders/
+    - assets/globe/Widgets/Images/NavigationHelp/
+    - assets/globe/Widgets/Images/TerrainProviders/
+    - assets/globe/Widgets/InfoBox/
+    - assets/globe/Widgets/NavigationHelpButton/
+    - assets/globe/Widgets/PerformanceWatchdog/
+    - assets/globe/Widgets/ProjectionPicker/
+    - assets/globe/Widgets/SceneModePicker/
+    - assets/globe/Widgets/SelectionIndicator/
+    - assets/globe/Widgets/Timeline/
+    - assets/globe/Widgets/Viewer/
+    - assets/globe/Widgets/VoxelInspector/
+    - assets/globe/Widgets/VRButton/
+    - assets/globe/Workers/
     - assets/geodata/
