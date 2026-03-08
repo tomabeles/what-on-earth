@@ -8,15 +8,21 @@ import '../position/position_controller.dart';
 import '../position/position_source.dart';
 import 'theme.dart';
 
-/// Persistent status bar showing the current position source, data freshness,
-/// and network connectivity.
+/// Compact semi-transparent pill bar pinned to the top of the AR View and
+/// 2D Map View. Always visible, not interactive in V1.
 ///
-/// Displays on all primary screens (AR view, 2D map). Fits within a 40 dp
-/// strip and meets WCAG 2.1 AA contrast on the dark globe background.
+/// Displays: position source dot + label, data age, connectivity icon,
+/// and tile cache freshness warning.
 ///
-/// Reference: TECH_SPEC §10.3, PRD FR-POS-005
+/// Reference: UI_SPEC SS5.1, supersedes WOE-015
 class StatusBar extends ConsumerStatefulWidget {
-  const StatusBar({super.key});
+  const StatusBar({
+    super.key,
+    this.lastTileSync,
+  });
+
+  /// When set, shows a "Stale" warning if older than 30 days.
+  final DateTime? lastTileSync;
 
   @override
   ConsumerState<StatusBar> createState() => _StatusBarState();
@@ -24,7 +30,7 @@ class StatusBar extends ConsumerStatefulWidget {
 
 class _StatusBarState extends ConsumerState<StatusBar> {
   Timer? _ageTimer;
-  String _ageLabel = '';
+  int _ageSeconds = -1;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _isOnline = true;
@@ -32,7 +38,8 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   @override
   void initState() {
     super.initState();
-    _ageTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateAge());
+    _ageTimer =
+        Timer.periodic(const Duration(seconds: 1), (_) => _updateAge());
     _initConnectivity();
   }
 
@@ -48,8 +55,8 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     });
   }
 
-  static bool _hasInternet(List<ConnectivityResult> results) =>
-      results.any((r) =>
+  static bool _hasInternet(List<ConnectivityResult> results) => results.any(
+      (r) =>
           r == ConnectivityResult.mobile ||
           r == ConnectivityResult.wifi ||
           r == ConnectivityResult.ethernet);
@@ -58,20 +65,11 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     final status = ref.read(positionControllerProvider).value;
     final lastFix = status?.lastFixAt;
     if (lastFix == null) {
-      if (_ageLabel != '') setState(() => _ageLabel = '');
+      if (_ageSeconds != -1) setState(() => _ageSeconds = -1);
       return;
     }
     final seconds = DateTime.now().toUtc().difference(lastFix).inSeconds;
-    final label = _formatAge(seconds);
-    if (label != _ageLabel) setState(() => _ageLabel = label);
-  }
-
-  static String _formatAge(int seconds) {
-    if (seconds < 1) return 'Updated just now';
-    if (seconds < 60) return 'Updated ${seconds}s ago';
-    final minutes = seconds ~/ 60;
-    if (minutes < 60) return 'Updated ${minutes}m ago';
-    return 'Updated ${minutes ~/ 60}h ago';
+    if (seconds != _ageSeconds) setState(() => _ageSeconds = seconds);
   }
 
   @override
@@ -81,87 +79,96 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     super.dispose();
   }
 
+  bool get _isTileStale {
+    final sync = widget.lastTileSync;
+    if (sync == null) return false;
+    return DateTime.now().toUtc().difference(sync).inDays > 30;
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncStatus = ref.watch(positionControllerProvider);
     final status = asyncStatus.value;
-    final tokens = Theme.of(context).extension<AppTokens>();
+    final tokens = Theme.of(context).extension<AppTokens>()!;
+    final fontSize = tokens.hudFontSize - 1;
+    final textStyle = TextStyle(
+      fontFamily: tokens.hudFontFamily,
+      fontSize: fontSize,
+      color: tokens.hudPrimary,
+    );
 
-    final sourceLabel = _sourceLabel(status?.sourceType);
-    final sourceColor = _sourceColor(status?.sourceType, tokens);
-    final connectColor = _isOnline
-        ? (tokens?.statusLive ?? const Color(0xFF34C759))
-        : (tokens?.statusOffline ?? const Color(0xFF8E8E93));
+    final sourceType = status?.sourceType;
+    final sourceLabel = _sourceLabel(sourceType);
+    final sourceColor = _sourceColor(sourceType, tokens);
+
+    final showAge = sourceType != PositionSourceType.static && _ageSeconds >= 1;
 
     return Container(
-      height: 40,
+      height: 28,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: tokens?.hudBackground ?? const Color(0x99000000),
+        color: tokens.surfaceOverlay,
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Source indicator dot + label.
+          // Source dot
           _Dot(color: sourceColor),
-          const SizedBox(width: 6),
-          Text(
-            sourceLabel,
-            style: TextStyle(
-              color: sourceColor,
-              fontSize: tokens?.hudFontSize ?? 11,
-              fontFamily: tokens?.hudFontFamily ?? 'JetBrainsMono',
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Age label.
-          if (_ageLabel.isNotEmpty)
-            Expanded(
-              child: Text(
-                _ageLabel,
-                style: TextStyle(
-                  color: tokens?.hudSecondary ?? const Color(0xFF8BB8C8),
-                  fontSize: tokens?.hudFontSize ?? 11,
-                  fontFamily: tokens?.hudFontFamily ?? 'JetBrainsMono',
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            )
-          else
-            const Spacer(),
-          // Connectivity dot.
-          _Dot(color: connectColor),
           const SizedBox(width: 4),
-          Text(
-            _isOnline ? 'Online' : 'Offline',
-            style: TextStyle(
-              color: connectColor,
-              fontSize: tokens?.hudFontSize ?? 11,
-              fontFamily: tokens?.hudFontFamily ?? 'JetBrainsMono',
-            ),
+          // Source label
+          Text(sourceLabel, style: textStyle.copyWith(color: sourceColor)),
+          // Age
+          if (showAge) ...[
+            _separator(textStyle),
+            Text(_formatAge(_ageSeconds), style: textStyle),
+          ],
+          // Connectivity icon
+          _separator(textStyle),
+          Icon(
+            _isOnline ? Icons.wifi : Icons.warning_amber_rounded,
+            size: fontSize + 3,
+            color: _isOnline ? tokens.hudPrimary : tokens.statusOffline,
           ),
+          // Tile freshness warning
+          if (_isTileStale) ...[
+            _separator(textStyle),
+            Icon(Icons.map, size: fontSize + 3, color: tokens.hudWarning),
+            const SizedBox(width: 2),
+            Text('Stale',
+                style: textStyle.copyWith(color: tokens.hudWarning)),
+          ],
         ],
       ),
     );
   }
 
+  Widget _separator(TextStyle style) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Text('\u00B7', style: style),
+      );
+
   static String _sourceLabel(PositionSourceType? type) => switch (type) {
         PositionSourceType.live => 'ISS Live',
-        PositionSourceType.estimated => 'Estimated (TLE)',
+        PositionSourceType.estimated => 'TLE Estimated',
         PositionSourceType.static => 'Static',
-        null => 'Connecting…',
+        null => 'Connecting\u2026',
       };
 
-  static Color _sourceColor(PositionSourceType? type, AppTokens? tokens) =>
+  static Color _sourceColor(PositionSourceType? type, AppTokens tokens) =>
       switch (type) {
-        PositionSourceType.live =>
-          tokens?.statusLive ?? const Color(0xFF34C759),
-        PositionSourceType.estimated =>
-          tokens?.statusEstimated ?? const Color(0xFFFFB340),
-        PositionSourceType.static =>
-          tokens?.statusOffline ?? const Color(0xFF8E8E93),
-        null => tokens?.statusOffline ?? const Color(0xFF8E8E93),
+        PositionSourceType.live => tokens.statusLive,
+        PositionSourceType.estimated => tokens.statusEstimated,
+        PositionSourceType.static => tokens.statusOffline,
+        null => tokens.statusOffline,
       };
+
+  static String _formatAge(int seconds) {
+    if (seconds < 60) return '${seconds}s ago';
+    final minutes = seconds ~/ 60;
+    if (minutes < 60) return '${minutes}m ago';
+    return '${minutes ~/ 60}h ago';
+  }
 }
 
 class _Dot extends StatelessWidget {

@@ -6,7 +6,7 @@ import 'package:what_on_earth/position/position_source.dart';
 import 'package:what_on_earth/shared/status_bar.dart';
 import 'package:what_on_earth/shared/theme.dart';
 
-Widget _wrap(PositionSourceStatus status) {
+Widget _wrap(PositionSourceStatus status, {DateTime? lastTileSync}) {
   return ProviderScope(
     overrides: [
       positionControllerProvider.overrideWith(
@@ -15,7 +15,8 @@ Widget _wrap(PositionSourceStatus status) {
     ],
     child: MaterialApp(
       theme: buildThemeData(AppThemes.night),
-      home: const Scaffold(body: StatusBar()),
+      home: Scaffold(
+          body: Center(child: StatusBar(lastTileSync: lastTileSync))),
     ),
   );
 }
@@ -29,8 +30,8 @@ class _FakePositionController extends PositionController {
 }
 
 void main() {
-  group('StatusBar', () {
-    testWidgets('shows "ISS Live" with green for live source',
+  group('StatusBar (WOE-067)', () {
+    testWidgets('shows "ISS Live" with green dot for live source',
         (tester) async {
       await tester.pumpWidget(_wrap(const PositionSourceStatus(
         sourceType: PositionSourceType.live,
@@ -45,7 +46,7 @@ void main() {
       expect(text.style?.color, AppThemes.night.tokens.statusLive);
     });
 
-    testWidgets('shows "Estimated (TLE)" with amber for estimated source',
+    testWidgets('shows "TLE Estimated" with amber for estimated source',
         (tester) async {
       await tester.pumpWidget(_wrap(const PositionSourceStatus(
         sourceType: PositionSourceType.estimated,
@@ -54,9 +55,9 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
-      expect(find.text('Estimated (TLE)'), findsOneWidget);
+      expect(find.text('TLE Estimated'), findsOneWidget);
 
-      final text = tester.widget<Text>(find.text('Estimated (TLE)'));
+      final text = tester.widget<Text>(find.text('TLE Estimated'));
       expect(text.style?.color, AppThemes.night.tokens.statusEstimated);
     });
 
@@ -75,7 +76,8 @@ void main() {
     });
 
     testWidgets('shows age label when lastFixAt is provided', (tester) async {
-      final fixTime = DateTime.now().toUtc().subtract(const Duration(seconds: 5));
+      final fixTime =
+          DateTime.now().toUtc().subtract(const Duration(seconds: 5));
       await tester.pumpWidget(_wrap(PositionSourceStatus(
         sourceType: PositionSourceType.live,
         isLive: true,
@@ -84,10 +86,10 @@ void main() {
       // Pump once more to let the age timer fire.
       await tester.pump(const Duration(seconds: 1));
 
-      expect(find.textContaining('Updated'), findsOneWidget);
+      expect(find.textContaining('ago'), findsOneWidget);
     });
 
-    testWidgets('container height is 40', (tester) async {
+    testWidgets('has pill shape with border radius', (tester) async {
       await tester.pumpWidget(_wrap(const PositionSourceStatus(
         sourceType: PositionSourceType.live,
         isLive: true,
@@ -95,14 +97,59 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
+      // Find the StatusBar's container and verify pill shape decoration
       final container = tester.widget<Container>(
         find.descendant(
           of: find.byType(StatusBar),
           matching: find.byType(Container).first,
         ),
       );
-      final constraints = container.constraints;
-      expect(constraints?.maxHeight ?? container.constraints?.minHeight, 40);
+      final decoration = container.decoration as BoxDecoration;
+      expect(decoration.borderRadius, BorderRadius.circular(14));
+    });
+
+    testWidgets('shows wifi icon when online', (tester) async {
+      await tester.pumpWidget(_wrap(const PositionSourceStatus(
+        sourceType: PositionSourceType.live,
+        isLive: true,
+        lastFixAt: null,
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.wifi), findsOneWidget);
+    });
+
+    testWidgets('shows Stale warning when tile cache is old', (tester) async {
+      final oldSync =
+          DateTime.now().toUtc().subtract(const Duration(days: 45));
+      await tester.pumpWidget(_wrap(
+        const PositionSourceStatus(
+          sourceType: PositionSourceType.live,
+          isLive: true,
+          lastFixAt: null,
+        ),
+        lastTileSync: oldSync,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Stale'), findsOneWidget);
+      expect(find.byIcon(Icons.map), findsOneWidget);
+    });
+
+    testWidgets('no Stale warning when tile cache is recent', (tester) async {
+      final recentSync =
+          DateTime.now().toUtc().subtract(const Duration(days: 5));
+      await tester.pumpWidget(_wrap(
+        const PositionSourceStatus(
+          sourceType: PositionSourceType.live,
+          isLive: true,
+          lastFixAt: null,
+        ),
+        lastTileSync: recentSync,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Stale'), findsNothing);
     });
   });
 }
