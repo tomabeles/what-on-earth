@@ -192,9 +192,26 @@ double _wrapRoll(double deg) {
 // and does not warrant isolate overhead. If profiling shows a need, the pure
 // applyFilter() function can be moved to a compute isolate (WOE-050).
 
+/// Fired when magnetometer interference is detected (WOE-021).
+class MagnetometerInterferenceEvent {
+  final DateTime timestamp;
+  const MagnetometerInterferenceEvent({required this.timestamp});
+}
+
+/// Threshold in degrees for detecting magnetometer interference.
+/// A heading change > 30° between consecutive 50 Hz samples implies
+/// >1500°/s rotation — physically impossible from device motion.
+const double kInterferenceThresholdDeg = 30.0;
+
+/// Number of consecutive stable readings required to clear interference.
+const int kStableSamplesToRecover = 5;
+
 class SensorFusionEngine {
   final StreamController<DeviceOrientation> _controller =
       StreamController<DeviceOrientation>.broadcast();
+
+  final StreamController<MagnetometerInterferenceEvent> _interferenceController =
+      StreamController<MagnetometerInterferenceEvent>.broadcast();
 
   StreamSubscription<AccelerometerEvent>? _accelSub;
   StreamSubscription<GyroscopeEvent>? _gyroSub;
@@ -210,9 +227,15 @@ class SensorFusionEngine {
   CalibrationParams? _calibration;
 
   bool _running = false;
+  bool _interferenceDetected = false;
+  int _stableCount = 0;
 
   /// Stream of fused orientation samples at ~50 Hz.
   Stream<DeviceOrientation> get orientationStream => _controller.stream;
+
+  /// Fires when magnetometer interference is detected.
+  Stream<MagnetometerInterferenceEvent> get interferenceEvents =>
+      _interferenceController.stream;
 
   /// Whether the engine is currently running.
   bool get isRunning => _running;
@@ -296,8 +319,36 @@ class SensorFusionEngine {
       timestamp: now,
     );
 
-    _lastOrientation = sample;
-    _controller.add(sample);
+    // Interference detection: check heading delta (WOE-021)
+    final prev = _lastOrientation;
+    if (prev != null) {
+      var delta = (sample.headingDeg - prev.headingDeg).abs();
+      if (delta > 180) delta = 360 - delta; // handle wrap-around
+      if (delta > kInterferenceThresholdDeg) {
+        _interferenceDetected = true;
+        _stableCount = 0;
+        _interferenceController.add(
+          MagnetometerInterferenceEvent(timestamp: sample.timestamp),
+        );
+      } else if (_interferenceDetected) {
+        _stableCount++;
+        if (_stableCount >= kStableSamplesToRecover) {
+          _interferenceDetected = false;
+          _stableCount = 0;
+        }
+      }
+    }
+
+    final oriented = DeviceOrientation(
+      headingDeg: sample.headingDeg,
+      pitchDeg: sample.pitchDeg,
+      rollDeg: sample.rollDeg,
+      reliable: !_interferenceDetected,
+      timestamp: sample.timestamp,
+    );
+
+    _lastOrientation = oriented;
+    _controller.add(oriented);
   }
 
   /// Stop all sensor subscriptions and close the output stream.
@@ -314,11 +365,14 @@ class SensorFusionEngine {
     _lastMag = null;
     _lastOrientation = null;
     _lastGyroTimestamp = null;
+    _interferenceDetected = false;
+    _stableCount = 0;
   }
 
   /// Release resources. Engine cannot be restarted after disposal.
   Future<void> dispose() async {
     await stop();
     await _controller.close();
+    await _interferenceController.close();
   }
 }
