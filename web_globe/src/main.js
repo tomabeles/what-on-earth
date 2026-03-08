@@ -6,6 +6,8 @@ import * as Cesium from 'cesium';
 import * as satellite from 'satellite.js';
 import { initTLE, propagateNow } from './satellite_propagator.js';
 import { loadVectorLayers, loadRasterLayers, layersRegistry } from './layers.js';
+import { syncPins } from './pins.js';
+import { calculateNextPass } from './satellite_propagator.js';
 
 // Active SGP4 propagation interval handle; cleared on each new SET_TLE.
 let _propagationInterval = null;
@@ -84,7 +86,14 @@ const handlers = {
     console.log('UPDATE_POSITION ignored (debug)', payload);
   },
   UPDATE_ORIENTATION(payload) {
-    // Implemented in WOE-019.
+    viewer.camera.setView({
+      destination: viewer.camera.position, // preserve current position
+      orientation: {
+        heading: Cesium.Math.toRadians(payload.heading),
+        pitch: Cesium.Math.toRadians(payload.pitch),
+        roll: Cesium.Math.toRadians(payload.roll),
+      },
+    });
   },
   SET_TLE(payload) {
     // Clear any running propagation interval before starting a new one so
@@ -108,13 +117,17 @@ const handlers = {
     layer.show = visible;
   },
   SYNC_PINS(payload) {
-    // Implemented in a later issue.
+    syncPins(viewer, payload.pins || []);
   },
   SET_MODE(payload) {
     // Implemented in a later issue.
   },
   REQUEST_PASS_CALC(payload) {
-    // Implemented in a later issue.
+    const result = calculateNextPass(payload.lat, payload.lon);
+    window.flutter_inappwebview.callHandler('PASS_CALC_RESULT', {
+      requestId: payload.requestId,
+      ...(result || { error: 'no_pass_found' }),
+    });
   },
   SET_SKYBOX({ enabled }) {
     if (viewer.scene.skyBox) {
@@ -130,6 +143,19 @@ window.addEventListener('flutter_message', (e) => {
   const { type, payload } = e.detail;
   handlers[type]?.(payload);
 });
+
+// ── MAP_TAP: globe click → Flutter (WOE-036) ───────────────────────────────
+const clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
+clickHandler.setInputAction((event) => {
+  const cartesian = viewer.camera.pickEllipsoid(
+    event.position, viewer.scene.globe.ellipsoid);
+  if (!cartesian) return; // tapped sky — ignore
+  const carto = Cesium.Cartographic.fromCartesian(cartesian);
+  window.flutter_inappwebview.callHandler('MAP_TAP', {
+    lat: Cesium.Math.toDegrees(carto.latitude),
+    lon: Cesium.Math.toDegrees(carto.longitude),
+  });
+}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
 // Notify Flutter that CesiumJS is fully initialized.
 // The 'flutterInAppWebViewPlatformReady' event fires once the Flutter
