@@ -5,6 +5,7 @@
 import * as Cesium from 'cesium';
 import * as satellite from 'satellite.js';
 import { initTLE, propagateNow } from './satellite_propagator.js';
+import { loadVectorLayers, loadRasterLayers, layersRegistry } from './layers.js';
 
 // Active SGP4 propagation interval handle; cleared on each new SET_TLE.
 let _propagationInterval = null;
@@ -59,6 +60,13 @@ viewer.camera.setView({
   },
 });
 
+// ── Load vector layers from bundled GeoJSON assets ──────────────────────────
+loadVectorLayers(viewer, 8080).catch(e => console.warn('Vector layer load error:', e));
+
+// Raster layers are loaded after INIT_CONFIG provides the tile server port.
+// Default: try loading immediately with the standard port.
+loadRasterLayers(viewer, 8765);
+
 // ── Flutter → CesiumJS bridge (TECH_SPEC §8.1) ───────────────────────────────
 // All messages arrive as `flutter_message` CustomEvents with
 // { type: string, payload: object } in the detail field.
@@ -83,8 +91,14 @@ const handlers = {
       }
     }, 2000);
   },
-  TOGGLE_LAYER(payload) {
-    // Implemented in a later issue.
+  TOGGLE_LAYER({ layerId, visible }) {
+    const layer = layersRegistry[layerId];
+    if (!layer) {
+      console.warn(`TOGGLE_LAYER: unknown layer "${layerId}"`);
+      return;
+    }
+    // GeoJsonDataSource uses .show, ImageryLayer uses .show
+    layer.show = visible;
   },
   SYNC_PINS(payload) {
     // Implemented in a later issue.

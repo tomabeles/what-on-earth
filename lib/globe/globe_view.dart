@@ -103,10 +103,18 @@ Future<shelf.Response> _serveGlobeAsset(shelf.Request request) async {
   if (path == '/') path = '/index.html';
   // Cesium.js hardcodes "Assets/" (capital A) but vite-plugin-cesium outputs
   // to lowercase "assets/". Flutter's asset bundle is case-sensitive on Android.
+  // Cesium.js hardcodes "Assets/" (capital A) but vite-plugin-cesium outputs
+  // to lowercase "assets/". Flutter's asset bundle is case-sensitive on Android.
   if (path.startsWith('/Assets/')) {
     path = '/assets/${path.substring(8)}';
   }
-  final assetKey = 'assets/globe$path';
+  // GeoJSON vector layers are served from assets/geodata/ (not assets/globe/).
+  final String assetKey;
+  if (path.startsWith('/geodata/')) {
+    assetKey = 'assets$path'; // assets/geodata/...
+  } else {
+    assetKey = 'assets/globe$path';
+  }
   try {
     final data = await rootBundle.load(assetKey);
     debugPrint('shelf 200: $assetKey (${data.lengthInBytes} bytes)');
@@ -127,7 +135,9 @@ String _mimeType(String path) {
   if (path.endsWith('.html')) return 'text/html; charset=utf-8';
   if (path.endsWith('.js')) return 'application/javascript';
   if (path.endsWith('.css')) return 'text/css';
-  if (path.endsWith('.json')) return 'application/json';
+  if (path.endsWith('.json') || path.endsWith('.geojson')) {
+    return 'application/json';
+  }
   if (path.endsWith('.wasm')) return 'application/wasm';
   if (path.endsWith('.png')) return 'image/png';
   if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';

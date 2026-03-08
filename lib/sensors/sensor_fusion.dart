@@ -3,6 +3,13 @@ import 'dart:math' as math;
 
 import 'package:sensors_plus/sensors_plus.dart';
 
+import 'calibration.dart';
+import 'device_orientation.dart';
+
+// Re-export DeviceOrientation so existing imports of sensor_fusion.dart
+// continue to resolve the type.
+export 'device_orientation.dart';
+
 // ---------------------------------------------------------------------------
 // Data models
 // ---------------------------------------------------------------------------
@@ -22,37 +29,8 @@ class RawSensorSample {
   });
 }
 
-/// Fused device orientation in degrees.
-class OrientationSample {
-  /// Heading from magnetic north, 0-360 degrees clockwise.
-  final double headingDeg;
-
-  /// Pitch: -90 (face down) to +90 (face up / skyward).
-  final double pitchDeg;
-
-  /// Roll: -180 to +180 degrees.
-  final double rollDeg;
-
-  /// Whether the magnetometer data appears trustworthy.
-  final bool reliable;
-
-  final DateTime timestamp;
-
-  const OrientationSample({
-    required this.headingDeg,
-    required this.pitchDeg,
-    required this.rollDeg,
-    required this.reliable,
-    required this.timestamp,
-  });
-
-  @override
-  String toString() =>
-      'OrientationSample(hdg=${headingDeg.toStringAsFixed(1)}, '
-      'pch=${pitchDeg.toStringAsFixed(1)}, '
-      'rol=${rollDeg.toStringAsFixed(1)}, '
-      'reliable=$reliable)';
-}
+/// Backwards-compatible alias for [DeviceOrientation].
+typedef OrientationSample = DeviceOrientation;
 
 // ---------------------------------------------------------------------------
 // Complementary filter — pure function (TECH_SPEC §7.2)
@@ -103,14 +81,27 @@ double tiltCompensatedHeading(
   return headingRad;
 }
 
+/// Apply hard-iron correction to a raw magnetometer sample.
+RawSensorSample applyHardIronCorrection(
+  RawSensorSample mag,
+  List<double> hardIron,
+) {
+  return RawSensorSample(
+    x: mag.x - hardIron[0],
+    y: mag.y - hardIron[1],
+    z: mag.z - hardIron[2],
+    timestamp: mag.timestamp,
+  );
+}
+
 /// Apply one step of the complementary filter.
 ///
 /// Pure function for testability. All angles in degrees.
 ///
 /// [prev] may be null for the first sample (uses accel/mag reference directly).
 /// [dt] is the time delta in seconds since the previous sample.
-OrientationSample applyFilter({
-  required OrientationSample? prev,
+DeviceOrientation applyFilter({
+  required DeviceOrientation? prev,
   required RawSensorSample accel,
   required RawSensorSample mag,
   required RawSensorSample gyro,
@@ -128,7 +119,7 @@ OrientationSample applyFilter({
 
   if (prev == null || dt <= 0) {
     // First sample — use accelerometer/magnetometer reference directly
-    return OrientationSample(
+    return DeviceOrientation(
       headingDeg: _wrapHeading(refHeadingDeg),
       pitchDeg: _clampPitch(refPitchDeg),
       rollDeg: _wrapRoll(refRollDeg),
@@ -153,7 +144,7 @@ OrientationSample applyFilter({
   final fusedRoll = alpha * gyroRoll + (1 - alpha) * refRollDeg;
   final fusedHeading = _blendAngles(gyroHeading, refHeadingDeg, alpha);
 
-  return OrientationSample(
+  return DeviceOrientation(
     headingDeg: _wrapHeading(fusedHeading),
     pitchDeg: _clampPitch(fusedPitch),
     rollDeg: _wrapRoll(fusedRoll),
@@ -202,8 +193,8 @@ double _wrapRoll(double deg) {
 // applyFilter() function can be moved to a compute isolate (WOE-050).
 
 class SensorFusionEngine {
-  final StreamController<OrientationSample> _controller =
-      StreamController<OrientationSample>.broadcast();
+  final StreamController<DeviceOrientation> _controller =
+      StreamController<DeviceOrientation>.broadcast();
 
   StreamSubscription<AccelerometerEvent>? _accelSub;
   StreamSubscription<GyroscopeEvent>? _gyroSub;
@@ -211,21 +202,32 @@ class SensorFusionEngine {
 
   RawSensorSample? _lastAccel;
   RawSensorSample? _lastMag;
-  OrientationSample? _lastOrientation;
+  DeviceOrientation? _lastOrientation;
   DateTime? _lastGyroTimestamp;
+
+  /// Current hard-iron calibration offsets. Updated live via
+  /// [updateCalibration] without restarting the engine.
+  CalibrationParams? _calibration;
 
   bool _running = false;
 
   /// Stream of fused orientation samples at ~50 Hz.
-  Stream<OrientationSample> get orientationStream => _controller.stream;
+  Stream<DeviceOrientation> get orientationStream => _controller.stream;
 
   /// Whether the engine is currently running.
   bool get isRunning => _running;
 
   /// Start subscribing to sensors and emitting orientation samples.
-  void start() {
+  ///
+  /// If [calibrationStore] is provided, loads saved calibration params
+  /// on startup.
+  Future<void> start({CalibrationStore? calibrationStore}) async {
     if (_running) return;
     _running = true;
+
+    if (calibrationStore != null) {
+      _calibration = await calibrationStore.load();
+    }
 
     _accelSub = accelerometerEventStream(
       samplingPeriod: SensorInterval.gameInterval,
@@ -255,10 +257,22 @@ class SensorFusionEngine {
     ).listen(_onGyro);
   }
 
+  /// Update calibration params at runtime (e.g. after recalibration).
+  /// Takes effect on the next sensor sample — no engine restart required.
+  void updateCalibration(CalibrationParams params) {
+    _calibration = params;
+  }
+
   void _onGyro(GyroscopeEvent event) {
     final accel = _lastAccel;
-    final mag = _lastMag;
+    var mag = _lastMag;
     if (accel == null || mag == null) return;
+
+    // Apply hard-iron correction if calibration is available
+    final cal = _calibration;
+    if (cal != null) {
+      mag = applyHardIronCorrection(mag, cal.hardIron);
+    }
 
     final now = event.timestamp;
     final dt = _lastGyroTimestamp != null
