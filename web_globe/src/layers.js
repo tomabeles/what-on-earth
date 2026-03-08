@@ -19,10 +19,10 @@ export const layersRegistry = {};
 export async function loadVectorLayers(viewer, assetServerPort = 8080) {
   const base = `http://localhost:${assetServerPort}/geodata`;
 
-  // Country borders — white polylines
+  // Country borders — bright yellow polylines for visibility at orbital altitude
   try {
     const borders = await Cesium.GeoJsonDataSource.load(`${base}/ne_10m_admin_0_countries.geojson`, {
-      stroke: Cesium.Color.WHITE.withAlpha(0.7),
+      stroke: Cesium.Color.YELLOW,
       strokeWidth: 1,
       fill: Cesium.Color.TRANSPARENT,
     });
@@ -30,6 +30,7 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
     // primitives serve no purpose and degenerate Natural Earth polygons
     // crash CesiumJS createGeometry (undefined .length errors).
     // Convert outlines to lightweight polylines instead.
+    const borderColor = Cesium.Color.fromCssColorString('#ffcc00').withAlpha(0.9);
     for (const entity of borders.entities.values) {
       if (entity.polygon) {
         try {
@@ -37,8 +38,8 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
           if (hierarchy?.positions?.length >= 2) {
             entity.polyline = new Cesium.PolylineGraphics({
               positions: hierarchy.positions,
-              width: 1,
-              material: Cesium.Color.WHITE.withAlpha(0.7),
+              width: 2,
+              material: borderColor,
             });
           }
         } catch (_) { /* skip degenerate */ }
@@ -51,11 +52,11 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
     console.warn('Failed to load country borders:', e);
   }
 
-  // Coastlines — light blue polylines
+  // Coastlines — cyan polylines
   try {
     const coastlines = await Cesium.GeoJsonDataSource.load(`${base}/ne_10m_coastline.geojson`, {
-      stroke: Cesium.Color.fromCssColorString('#6ab0cc'),
-      strokeWidth: 1.5,
+      stroke: Cesium.Color.fromCssColorString('#00e5ff'),
+      strokeWidth: 2,
       fill: Cesium.Color.TRANSPARENT,
     });
     viewer.dataSources.add(coastlines);
@@ -102,21 +103,28 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
       markerSize: 4,
       markerColor: Cesium.Color.WHITE,
     });
-    // Style labels: only show for cities with POP_MAX > 500000
+    // Style labels: only show for major cities (POP_MAX > 1M at orbit altitude)
     const entities = cities.entities.values;
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
       const popMax = entity.properties?.POP_MAX?.getValue();
       if (entity.label) {
-        entity.label.show = popMax > 500000;
-        entity.label.font = '11px sans-serif';
+        entity.label.show = popMax > 1000000;
+        entity.label.font = '14px sans-serif';
         entity.label.fillColor = Cesium.Color.WHITE;
         entity.label.outlineColor = Cesium.Color.BLACK;
-        entity.label.outlineWidth = 2;
+        entity.label.outlineWidth = 3;
         entity.label.style = Cesium.LabelStyle.FILL_AND_OUTLINE;
-        entity.label.pixelOffset = new Cesium.Cartesian2(0, -8);
+        entity.label.pixelOffset = new Cesium.Cartesian2(0, -10);
         entity.label.distanceDisplayCondition =
-          new Cesium.DistanceDisplayCondition(0, 15000000);
+          new Cesium.DistanceDisplayCondition(0, 20000000);
+        entity.label.scaleByDistance =
+          new Cesium.NearFarScalar(100000, 1.5, 5000000, 0.5);
+      }
+      // Scale markers for orbital viewing
+      if (entity.billboard) {
+        entity.billboard.scaleByDistance =
+          new Cesium.NearFarScalar(100000, 2.0, 5000000, 0.5);
       }
     }
     viewer.dataSources.add(cities);
@@ -129,32 +137,52 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
 // ── Raster tile layers (WOE-029) ────────────────────────────────────────────
 
 /**
- * Configure raster imagery layers pointing at the local tile server.
+ * Configure raster imagery layers.
+ *
+ * Tries the local tile server first; falls back to online OSM tiles if the
+ * local server isn't reachable. The relief layer uses local tiles only
+ * (no online fallback) and is hidden by default.
  *
  * @param {Cesium.Viewer} viewer
  * @param {number} tileServerPort - port of the tile server (default 8765)
  */
-export function loadRasterLayers(viewer, tileServerPort = 8765) {
-  // Base layer (e.g. OpenStreetMap tiles cached locally)
+export async function loadRasterLayers(viewer, tileServerPort = 8765) {
+  // Probe whether the local tile server is running.
+  let localAvailable = false;
+  try {
+    const resp = await fetch(`http://localhost:${tileServerPort}/`, { signal: AbortSignal.timeout(500) });
+    localAvailable = resp.ok;
+  } catch (_) { /* server not running */ }
+
+  const baseUrl = localAvailable
+    ? `http://localhost:${tileServerPort}/tiles/base/{z}/{x}/{y}.png`
+    : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
   const baseProvider = new Cesium.UrlTemplateImageryProvider({
-    url: `http://localhost:${tileServerPort}/tiles/base/{z}/{x}/{y}.png`,
+    url: baseUrl,
     minimumLevel: 0,
-    maximumLevel: 5,
+    maximumLevel: localAvailable ? 5 : 6,
     tilingScheme: new Cesium.WebMercatorTilingScheme(),
     credit: 'OpenStreetMap contributors',
   });
   const baseLayer = viewer.imageryLayers.addImageryProvider(baseProvider);
   layersRegistry['base'] = baseLayer;
 
-  // Relief layer
-  const reliefProvider = new Cesium.UrlTemplateImageryProvider({
-    url: `http://localhost:${tileServerPort}/tiles/relief/{z}/{x}/{y}.png`,
-    minimumLevel: 0,
-    maximumLevel: 5,
-    tilingScheme: new Cesium.WebMercatorTilingScheme(),
-    credit: 'Natural Earth',
-  });
-  const reliefLayer = viewer.imageryLayers.addImageryProvider(reliefProvider);
-  reliefLayer.show = false; // hidden by default, toggled via TOGGLE_LAYER
-  layersRegistry['relief'] = reliefLayer;
+  if (!localAvailable) {
+    console.log('Tile server not available — using online OSM tiles');
+  }
+
+  // Relief layer (local tiles only, hidden by default)
+  if (localAvailable) {
+    const reliefProvider = new Cesium.UrlTemplateImageryProvider({
+      url: `http://localhost:${tileServerPort}/tiles/relief/{z}/{x}/{y}.png`,
+      minimumLevel: 0,
+      maximumLevel: 5,
+      tilingScheme: new Cesium.WebMercatorTilingScheme(),
+      credit: 'Natural Earth',
+    });
+    const reliefLayer = viewer.imageryLayers.addImageryProvider(reliefProvider);
+    reliefLayer.show = false;
+    layersRegistry['relief'] = reliefLayer;
+  }
 }

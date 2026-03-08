@@ -78,25 +78,38 @@ viewer.camera.setView({
 // ── Load vector layers from bundled GeoJSON assets ──────────────────────────
 loadVectorLayers(viewer, 8080).catch(e => console.warn('Vector layer load error:', e));
 
-// Raster layers are loaded after INIT_CONFIG provides the tile server port.
-// Default: try loading immediately with the standard port.
-loadRasterLayers(viewer, 8765);
+// Raster layers — probes local tile server, falls back to online OSM.
+loadRasterLayers(viewer, 8765).catch(e => console.warn('Raster layer load error:', e));
 
 // ── Flutter → CesiumJS bridge (TECH_SPEC §8.1) ───────────────────────────────
 // All messages arrive as `flutter_message` CustomEvents with
 // { type: string, payload: object } in the detail field.
 
+// Smooth position interpolation: UPDATE_POSITION sets the target,
+// UPDATE_ORIENTATION (50Hz) lerps toward it each frame.
+let _targetPosition = null;
+const _lerpScratch = new Cesium.Cartesian3();
+
 const handlers = {
   UPDATE_POSITION(payload) {
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(
-        payload.lon, payload.lat, payload.altKm * 1000
-      ),
-    });
+    _targetPosition = Cesium.Cartesian3.fromDegrees(
+      payload.lon, payload.lat, payload.altKm * 1000
+    );
+    // If this is the first position, snap immediately.
+    if (Cesium.Cartesian3.equals(viewer.camera.position, Cesium.Cartesian3.fromDegrees(0, 0, 420000))) {
+      viewer.camera.setView({ destination: _targetPosition });
+    }
   },
   UPDATE_ORIENTATION(payload) {
+    // Lerp position toward target (~5% per frame at 50Hz ≈ smooth 2s blend)
+    let dest = viewer.camera.position;
+    if (_targetPosition) {
+      dest = Cesium.Cartesian3.lerp(
+        viewer.camera.position, _targetPosition, 0.05, _lerpScratch
+      );
+    }
     viewer.camera.setView({
-      destination: viewer.camera.position, // preserve current position
+      destination: dest,
       orientation: {
         heading: Cesium.Math.toRadians(payload.heading),
         pitch: Cesium.Math.toRadians(payload.pitch),
