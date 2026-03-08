@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:what_on_earth/position/position_controller.dart';
 import 'package:what_on_earth/position/position_source.dart';
 import 'package:what_on_earth/screens/settings_screen.dart';
+import 'package:what_on_earth/shared/theme.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -69,7 +70,10 @@ void main() {
           tlePositionSourceProvider.overrideWithValue(fakeTle),
           staticPositionSourceProvider.overrideWithValue(fakeStatic),
         ],
-        child: const MaterialApp(home: SettingsScreen()),
+        child: MaterialApp(
+          theme: buildThemeData(AppThemes.night),
+          home: const SettingsScreen(),
+        ),
       );
     }
 

@@ -4,31 +4,149 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../position/position_controller.dart';
 import '../position/position_source.dart';
+import '../shared/hud_visibility_provider.dart';
+import '../shared/nav_speed_dial.dart';
 import '../shared/theme.dart';
+import '../shared/theme_provider.dart';
 
 /// Settings screen — grouped list (UI_SPEC §4.6).
 ///
-/// Phase B1 implements the Position Source section only. Other sections
-/// (Display, Layers, Tile Cache, Account, Sensor, Power, About) are added
-/// in later tickets.
+/// Contains: Display section (WOE-080), Position Source section (WOE-081).
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = Theme.of(context).extension<AppTokens>();
+    final tokens = Theme.of(context).extension<AppTokens>()!;
 
     return Scaffold(
+      backgroundColor: tokens.surfacePrimary,
       appBar: AppBar(
         title: const Text('Settings'),
-        backgroundColor: tokens?.surfacePrimary,
+        backgroundColor: tokens.surfacePrimary,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: const [
-          _PositionSourceSection(),
+      body: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.all(16),
+            children: const [
+              _DisplaySection(),
+              SizedBox(height: 16),
+              _PositionSourceSection(),
+            ],
+          ),
+          // NAV FAB with Settings highlighted
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: NavSpeedDial(
+              activeDestination: NavDestination.settings,
+              onMapTap: () => Navigator.of(context).pop(),
+              onPinsTap: () => Navigator.of(context).pop(),
+            ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Display section (WOE-080)
+// ---------------------------------------------------------------------------
+
+class _DisplaySection extends ConsumerWidget {
+  const _DisplaySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = Theme.of(context).extension<AppTokens>()!;
+    final currentTheme = ref.watch(themeProvider);
+    final hudVisible = ref.watch(hudVisibilityProvider);
+
+    return _SectionCard(
+      tokens: tokens,
+      children: [
+        Text(
+          'Display',
+          style: TextStyle(
+            color: tokens.hudPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Theme picker
+        SizedBox(
+          height: 80,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: AppThemeRegistry.themes.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final theme = AppThemeRegistry.themes[index];
+              final isSelected = theme.id == currentTheme.id;
+              return GestureDetector(
+                onTap: () =>
+                    ref.read(themeProvider.notifier).setTheme(theme.id),
+                child: Container(
+                  width: 64,
+                  decoration: BoxDecoration(
+                    color: tokens.surfacePrimary,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color:
+                          isSelected ? tokens.hudPrimary : tokens.borderPrimary,
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Accent color swatch
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: theme.tokens.hudPrimary,
+                        ),
+                        child: isSelected
+                            ? Icon(Icons.check, size: 14,
+                                color: theme.tokens.fabIcon)
+                            : null,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        theme.displayName,
+                        style: TextStyle(
+                          color: tokens.hudPrimary,
+                          fontSize: 10,
+                          fontFamily: tokens.hudFontFamily,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        // HUD toggle
+        SwitchListTile(
+          title: Text(
+            'Telemetry HUD',
+            style: TextStyle(color: tokens.hudPrimary),
+          ),
+          value: hudVisible,
+          onChanged: (_) =>
+              ref.read(hudVisibilityProvider.notifier).toggle(),
+          activeTrackColor: tokens.hudPrimary,
+          contentPadding: EdgeInsets.zero,
+        ),
+      ],
     );
   }
 }
@@ -54,8 +172,6 @@ class _PositionSourceSectionState
   late final TextEditingController _altController;
   bool _loadedDefaults = false;
 
-  // Local selection state for immediate UI response; the provider is
-  // updated asynchronously in the background.
   PositionSourceType? _localSelection;
 
   @override
@@ -116,77 +232,66 @@ class _PositionSourceSectionState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = Theme.of(context).extension<AppTokens>();
-    // Watch the provider to stay in sync if it changes externally.
+    final tokens = Theme.of(context).extension<AppTokens>()!;
     final asyncStatus = ref.watch(positionControllerProvider);
     final status = asyncStatus.value;
     final selected =
         _localSelection ?? status?.sourceType ?? PositionSourceType.live;
 
-    return Card(
-      color: tokens?.surfaceSecondary,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: tokens?.borderPrimary ?? Colors.white12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Position Source',
-              style: TextStyle(
-                color: tokens?.hudPrimary ?? Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<PositionSourceType>(
-                segments: const [
-                  ButtonSegment(
-                    value: PositionSourceType.live,
-                    label: Text('Live ISS'),
-                  ),
-                  ButtonSegment(
-                    value: PositionSourceType.estimated,
-                    label: Text('TLE'),
-                  ),
-                  ButtonSegment(
-                    value: PositionSourceType.static,
-                    label: Text('Static'),
-                  ),
-                ],
-                selected: {selected},
-                onSelectionChanged: (s) => _onSourceChanged(s.first),
-                style: ButtonStyle(
-                  foregroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return tokens?.fabIcon ?? Colors.black;
-                    }
-                    return tokens?.hudPrimary ?? Colors.white;
-                  }),
-                  backgroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return tokens?.hudPrimary ?? Colors.white;
-                    }
-                    return tokens?.surfaceSecondary ?? Colors.black;
-                  }),
-                ),
-              ),
-            ),
-            if (selected == PositionSourceType.static && _loadedDefaults)
-              _buildStaticFields(tokens),
-          ],
+    return _SectionCard(
+      tokens: tokens,
+      children: [
+        Text(
+          'Position Source',
+          style: TextStyle(
+            color: tokens.hudPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<PositionSourceType>(
+            segments: const [
+              ButtonSegment(
+                value: PositionSourceType.live,
+                label: Text('Live ISS'),
+              ),
+              ButtonSegment(
+                value: PositionSourceType.estimated,
+                label: Text('TLE'),
+              ),
+              ButtonSegment(
+                value: PositionSourceType.static,
+                label: Text('Static'),
+              ),
+            ],
+            selected: {selected},
+            onSelectionChanged: (s) => _onSourceChanged(s.first),
+            style: ButtonStyle(
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return tokens.fabIcon;
+                }
+                return tokens.hudPrimary;
+              }),
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return tokens.hudPrimary;
+                }
+                return tokens.surfaceSecondary;
+              }),
+            ),
+          ),
+        ),
+        if (selected == PositionSourceType.static && _loadedDefaults)
+          _buildStaticFields(tokens),
+      ],
     );
   }
 
-  Widget _buildStaticFields(AppTokens? tokens) {
+  Widget _buildStaticFields(AppTokens tokens) {
     return Form(
       key: _formKey,
       child: Padding(
@@ -229,6 +334,35 @@ class _PositionSourceSectionState
   }
 }
 
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.tokens, required this.children});
+
+  final AppTokens tokens;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: tokens.surfaceSecondary,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: tokens.borderPrimary),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+
 class _CoordField extends StatelessWidget {
   const _CoordField({
     required this.controller,
@@ -245,7 +379,7 @@ class _CoordField extends StatelessWidget {
   final String suffix;
   final double min;
   final double max;
-  final AppTokens? tokens;
+  final AppTokens tokens;
   final VoidCallback onSaved;
 
   @override
@@ -254,23 +388,22 @@ class _CoordField extends StatelessWidget {
       controller: controller,
       keyboardType:
           const TextInputType.numberWithOptions(decimal: true, signed: true),
-      style: TextStyle(color: tokens?.hudPrimary ?? Colors.white),
+      style: TextStyle(color: tokens.hudPrimary),
       decoration: InputDecoration(
         labelText: label,
         suffixText: suffix,
-        labelStyle: TextStyle(color: tokens?.hudSecondary ?? Colors.white70),
+        labelStyle: TextStyle(color: tokens.hudSecondary),
         enabledBorder: OutlineInputBorder(
-          borderSide:
-              BorderSide(color: tokens?.borderPrimary ?? Colors.white24),
+          borderSide: BorderSide(color: tokens.borderPrimary),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: tokens?.hudPrimary ?? Colors.white),
+          borderSide: BorderSide(color: tokens.hudPrimary),
         ),
         errorBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: tokens?.hudDanger ?? Colors.red),
+          borderSide: BorderSide(color: tokens.hudDanger),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: tokens?.hudDanger ?? Colors.red),
+          borderSide: BorderSide(color: tokens.hudDanger),
         ),
       ),
       validator: (value) {

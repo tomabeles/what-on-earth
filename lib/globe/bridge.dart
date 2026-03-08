@@ -73,6 +73,10 @@ class BridgeController {
 
   final _propagatedPositions = StreamController<OrbitalPosition>.broadcast();
 
+  /// FPS value reported by CesiumJS via `FRAME_RATE` messages.
+  /// AR screen listens to this and forwards to [fpsProvider].
+  final fpsNotifier = ValueNotifier<int?>(null);
+
   /// Positions propagated by the JS satellite.js SGP4 engine via
   /// `POSITION_UPDATE` messages. [TLESource] (WOE-012) listens to this.
   Stream<OrbitalPosition> get propagatedPositions =>
@@ -142,6 +146,7 @@ class BridgeController {
   void dispose() {
     _controller = null;
     _propagatedPositions.close();
+    fpsNotifier.dispose();
   }
 
   // ── Inbound handlers ──────────────────────────────────────────────────────
@@ -164,7 +169,13 @@ class BridgeController {
   }
 
   void _onFrameRate(List<dynamic> args) {
-    debugPrint('BridgeController: FRAME_RATE received: ${args.firstOrNull}');
+    final raw = args.firstOrNull;
+    debugPrint('BridgeController: FRAME_RATE received: $raw');
+    if (raw is int) {
+      fpsNotifier.value = raw;
+    } else if (raw is Map) {
+      fpsNotifier.value = (raw['fps'] as num?)?.toInt();
+    }
   }
 
   void _onPositionUpdate(List<dynamic> args) {
