@@ -37,10 +37,17 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
   },
 });
 
+// Catch render errors so one bad frame doesn't kill the entire render loop.
+viewer.scene.renderError.addEventListener((scene, error) => {
+  console.error('CesiumJS render error (non-fatal):', error);
+});
+
 // Skybox (star field) is available but hidden by default — camera feed is
 // visible through the transparent background. SET_SKYBOX toggles it on when
 // the camera preview is paused (WOE-077).
-viewer.scene.skyBox.show = false;
+if (viewer.scene.skyBox) {
+  viewer.scene.skyBox.show = false;
+}
 viewer.scene.backgroundColor = new Cesium.Color(0, 0, 0, 0);
 viewer.scene.highDynamicRange = false;           // HDR breaks alpha compositing
 viewer.scene.fog.enabled = false;
@@ -123,7 +130,9 @@ const handlers = {
     });
   },
   SET_SKYBOX({ enabled }) {
-    viewer.scene.skyBox.show = enabled;
+    if (viewer.scene.skyBox) {
+      viewer.scene.skyBox.show = enabled;
+    }
     viewer.scene.backgroundColor = enabled
       ? new Cesium.Color(0, 0, 0, 1)   // opaque black behind stars
       : new Cesium.Color(0, 0, 0, 0);  // transparent for AR camera
