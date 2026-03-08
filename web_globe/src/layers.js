@@ -26,6 +26,13 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
       strokeWidth: 1,
       fill: Cesium.Color.TRANSPARENT,
     });
+    // Disable rhumb line subdivision on polygon geometry to avoid
+    // RangeError in subdivideRhumbLine with degenerate Natural Earth polygons.
+    for (const entity of borders.entities.values) {
+      if (entity.polygon) {
+        entity.polygon.arcType = Cesium.ArcType.NONE;
+      }
+    }
     viewer.dataSources.add(borders);
     layersRegistry['borders'] = borders;
   } catch (e) {
@@ -52,6 +59,12 @@ export async function loadVectorLayers(viewer, assetServerPort = 8080) {
       stroke: Cesium.Color.TRANSPARENT,
       strokeWidth: 0,
     });
+    // Disable rhumb line subdivision (same fix as borders above).
+    for (const entity of lakes.entities.values) {
+      if (entity.polygon) {
+        entity.polygon.arcType = Cesium.ArcType.NONE;
+      }
+    }
     viewer.dataSources.add(lakes);
     layersRegistry['lakes'] = lakes;
   } catch (e) {
