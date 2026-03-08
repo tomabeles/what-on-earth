@@ -20,4 +20,10 @@ if [ -d "$REPO_ROOT/assets/globe/Assets" ]; then
   mv "$REPO_ROOT/assets/globe/_assets_tmp" "$REPO_ROOT/assets/globe/assets"
 fi
 
+# Ensure every assets/globe/ directory declared in pubspec.yaml exists, even if
+# vite-plugin-cesium didn't produce it (avoids flutter analyze warnings in CI).
+sed -n 's/^[[:space:]]*- \(assets\/globe\/[^ ]*\)/\1/p' "$REPO_ROOT/pubspec.yaml" | while read -r dir; do
+  mkdir -p "$REPO_ROOT/$dir"
+done
+
 echo "Globe bundle written to assets/globe/"
