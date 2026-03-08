@@ -80,6 +80,16 @@ class _IsolateConfig {
 
 Future<void> _isolateEntry(_IsolateConfig config) async {
   final router = Router()
+    ..get('/', (shelf.Request request) {
+      // Health probe used by CesiumJS (layers.js) to decide between local
+      // tiles and online OSM fallback.  Return 200 only when the root base
+      // tile exists on disk so the probe fails before tiles are downloaded.
+      final probe = File('${config.documentsPath}/tiles/base/0/0/0.png');
+      if (probe.existsSync()) {
+        return shelf.Response.ok('ok');
+      }
+      return shelf.Response.notFound('no tiles');
+    })
     ..get(
       '/tiles/<layer>/<z|[0-9]+>/<x|[0-9]+>/<y>',
       (shelf.Request request, String layer, String z, String x, String y) {
