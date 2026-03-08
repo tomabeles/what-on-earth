@@ -75,6 +75,10 @@ class BridgeController {
   final _passCalcResults = StreamController<PassCalcResponse>.broadcast();
   final _propagatedPositions = StreamController<OrbitalPosition>.broadcast();
 
+  /// FPS value reported by CesiumJS via `FRAME_RATE` messages.
+  /// AR screen listens to this and forwards to [fpsProvider].
+  final fpsNotifier = ValueNotifier<int?>(null);
+  
   /// Globe tap events from MAP_TAP messages.
   Stream<MapTapEvent> get mapTaps => _mapTaps.stream;
 
@@ -169,6 +173,7 @@ class BridgeController {
     _mapTaps.close();
     _passCalcResults.close();
     _propagatedPositions.close();
+    fpsNotifier.dispose();
   }
 
   // ── Inbound handlers ──────────────────────────────────────────────────────
@@ -206,7 +211,13 @@ class BridgeController {
   }
 
   void _onFrameRate(List<dynamic> args) {
-    debugPrint('BridgeController: FRAME_RATE received: ${args.firstOrNull}');
+    final raw = args.firstOrNull;
+    debugPrint('BridgeController: FRAME_RATE received: $raw');
+    if (raw is int) {
+      fpsNotifier.value = raw;
+    } else if (raw is Map) {
+      fpsNotifier.value = (raw['fps'] as num?)?.toInt();
+    }
   }
 
   void _onPositionUpdate(List<dynamic> args) {
