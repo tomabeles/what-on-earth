@@ -30,6 +30,66 @@ export function initTLE(line1, line2) {
  * @returns {{ lat: number, lon: number, altKm: number, ts: number, source: string } | null}
  *   Geodetic position, or null if no TLE has been set or propagation fails.
  */
+/**
+ * Calculate the next overhead pass for a given observer location.
+ * Iterates forward in 60-second steps up to 48 hours.
+ *
+ * @param {number} lat - Observer latitude in degrees
+ * @param {number} lon - Observer longitude in degrees
+ * @returns {{ passStartUtc: number, maxElevationDeg: number, passDurationSeconds: number } | null}
+ */
+export function calculateNextPass(lat, lon) {
+  if (!_satrec) return null;
+
+  const observerGd = {
+    latitude: satellite.degreesToRadians(lat),
+    longitude: satellite.degreesToRadians(lon),
+    height: 0, // sea level
+  };
+
+  const stepMs = 60 * 1000; // 1-minute steps
+  const maxMs = 48 * 60 * 60 * 1000; // 48 hours
+  const now = Date.now();
+  const elevThreshold = 10; // degrees
+
+  let passStart = null;
+  let maxElev = 0;
+
+  for (let t = 0; t < maxMs; t += stepMs) {
+    const date = new Date(now + t);
+    const posVel = satellite.propagate(_satrec, date);
+    if (!posVel || !posVel.position || posVel.position === false) continue;
+
+    const gmst = satellite.gstime(date);
+    const posEcf = satellite.eciToEcf(posVel.position, gmst);
+    const lookAngles = satellite.ecfToLookAngles(observerGd, posEcf);
+    const elevDeg = satellite.radiansToDegrees(lookAngles.elevation);
+
+    if (elevDeg >= elevThreshold) {
+      if (!passStart) passStart = date;
+      if (elevDeg > maxElev) maxElev = elevDeg;
+    } else if (passStart) {
+      // Pass ended
+      return {
+        passStartUtc: passStart.getTime(),
+        maxElevationDeg: Math.round(maxElev * 10) / 10,
+        passDurationSeconds: Math.round((date.getTime() - passStart.getTime()) / 1000),
+      };
+    }
+  }
+
+  // Pass started but didn't end within window
+  if (passStart) {
+    return {
+      passStartUtc: passStart.getTime(),
+      maxElevationDeg: Math.round(maxElev * 10) / 10,
+      passDurationSeconds: Math.round((now + maxMs - passStart.getTime()) / 1000),
+    };
+  }
+
+  return null;
+}
+
 export function propagateNow() {
   if (!_satrec) return null;
 
