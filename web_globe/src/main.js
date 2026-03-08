@@ -65,9 +65,9 @@ viewer.scene.globe.translucency.enabled = true;
 viewer.scene.globe.translucency.frontFaceAlpha = 1.0;
 viewer.scene.globe.baseColor = new Cesium.Color(0.1, 0.1, 0.15, 1.0); // dark ocean fill
 
-// Static camera: ISS orbital altitude (420 km = 420,000 m), looking straight down.
+// Initial camera: ISS orbital altitude (420 km = 420,000 m), looking straight down.
 viewer.camera.setView({
-  destination: Cesium.Cartesian3.fromDegrees(0, 0, 30000000), // DEBUG: far out to see whole globe
+  destination: Cesium.Cartesian3.fromDegrees(0, 0, 420000),
   orientation: {
     heading: Cesium.Math.toRadians(0),
     pitch: Cesium.Math.toRadians(-90),
@@ -88,8 +88,11 @@ loadRasterLayers(viewer, 8765);
 
 const handlers = {
   UPDATE_POSITION(payload) {
-    // DEBUG: ignore position updates to keep the far-out camera view
-    console.log('UPDATE_POSITION ignored (debug)', payload);
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(
+        payload.lon, payload.lat, payload.altKm * 1000
+      ),
+    });
   },
   UPDATE_ORIENTATION(payload) {
     viewer.camera.setView({

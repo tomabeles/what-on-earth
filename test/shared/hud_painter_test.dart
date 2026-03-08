@@ -20,15 +20,24 @@ class _FakeFpsNotifier extends FpsNotifier {
   int? build() => _initial;
 }
 
+class _FakeHudDataNotifier extends HudDataNotifier {
+  _FakeHudDataNotifier(this._initial);
+  final HudData _initial;
+
+  @override
+  HudData build() => _initial;
+}
+
 Widget _wrap({HudData data = const HudData(), int? fps}) {
   return ProviderScope(
     overrides: [
       hudVisibilityProvider.overrideWith(() => _FakeHudVisibility()),
+      hudDataProvider.overrideWith(() => _FakeHudDataNotifier(data)),
       if (fps != null) fpsProvider.overrideWith(() => _FakeFpsNotifier(fps)),
     ],
     child: MaterialApp(
       theme: buildThemeData(AppThemes.night),
-      home: Scaffold(body: TelemetryHud(data: data)),
+      home: Scaffold(body: TelemetryHud()),
     ),
   );
 }

@@ -8,6 +8,8 @@ import '../globe/bridge.dart';
 import '../globe/globe_view.dart';
 import '../position/position_controller.dart';
 import '../position/position_source.dart';
+import '../sensors/device_orientation.dart' as sensor;
+import '../sensors/sensor_fusion_provider.dart';
 import '../shared/controls_button.dart';
 import '../shared/layer_control_panel.dart';
 import '../shared/nav_speed_dial.dart';
@@ -35,12 +37,16 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   final _bridge = BridgeController();
 
   StreamSubscription<OrbitalPosition>? _positionSub;
+  StreamSubscription<sensor.DeviceOrientation>? _orientationSub;
+  OrbitalPosition? _lastPosition;
+  sensor.DeviceOrientation? _lastOrientation;
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startPosition();
+    _startOrientation();
     _listenCameraToggle();
     _bridge.fpsNotifier.addListener(_onFpsChanged);
   }
@@ -56,7 +62,41 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     final notifier = ref.read(positionControllerProvider.notifier);
     _positionSub = notifier.positionStream.listen((pos) {
       _bridge.send(OutboundMessage.updatePosition, pos.toJson());
+      _lastPosition = pos;
+      _updateHud();
     });
+  }
+
+  Future<void> _startOrientation() async {
+    await _bridge.globeReady;
+    if (!mounted) return;
+
+    final engine = ref.read(sensorFusionEngineProvider);
+    if (!engine.isRunning) {
+      await engine.start();
+    }
+    _orientationSub = engine.orientationStream.listen((orientation) {
+      _bridge.send(OutboundMessage.updateOrientation, orientation.toJson());
+      _lastOrientation = orientation;
+      _updateHud();
+    });
+  }
+
+  void _updateHud() {
+    final pos = _lastPosition;
+    final ori = _lastOrientation;
+    ref.read(hudDataProvider.notifier).update(HudData(
+      latDeg: pos?.latDeg,
+      lonDeg: pos?.lonDeg,
+      altKm: pos?.altKm,
+      headingDeg: ori?.headingDeg,
+      pitchDeg: ori?.pitchDeg,
+      rollDeg: ori?.rollDeg,
+      sourceType: pos?.sourceType,
+      ageSeconds: pos != null
+          ? DateTime.now().difference(pos.timestamp).inSeconds
+          : null,
+    ));
   }
 
   /// WOE-077: Listen to camera toggle in layer visibility provider and
@@ -87,6 +127,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   void dispose() {
     _bridge.fpsNotifier.removeListener(_onFpsChanged);
     _positionSub?.cancel();
+    _orientationSub?.cancel();
     _bridge.dispose();
     super.dispose();
   }

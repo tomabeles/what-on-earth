@@ -53,6 +53,17 @@ class FpsNotifier extends Notifier<int?> {
   void set(int? value) => state = value;
 }
 
+/// Provider for live HUD telemetry data, updated by ARScreen.
+final hudDataProvider =
+    NotifierProvider<HudDataNotifier, HudData>(HudDataNotifier.new);
+
+class HudDataNotifier extends Notifier<HudData> {
+  @override
+  HudData build() => const HudData();
+
+  void update(HudData data) => state = data;
+}
+
 // ---------------------------------------------------------------------------
 // TelemetryHud widget
 // ---------------------------------------------------------------------------
@@ -67,9 +78,7 @@ class FpsNotifier extends Notifier<int?> {
 ///
 /// Reference: UI_SPEC SS5.2
 class TelemetryHud extends ConsumerWidget {
-  const TelemetryHud({super.key, this.data = const HudData()});
-
-  final HudData data;
+  const TelemetryHud({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -77,6 +86,7 @@ class TelemetryHud extends ConsumerWidget {
     if (!visible) return const SizedBox.shrink();
 
     final tokens = Theme.of(context).extension<AppTokens>()!;
+    final data = ref.watch(hudDataProvider);
     final fps = ref.watch(fpsProvider);
     final padding = MediaQuery.of(context).padding;
 
