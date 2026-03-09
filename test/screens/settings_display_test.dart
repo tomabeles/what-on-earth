@@ -20,49 +20,40 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  group('SettingsScreen Display section (WOE-080)', () {
-    testWidgets('shows Display section title', (tester) async {
+  group('SettingsScreen Display section', () {
+    testWidgets('shows DISPLAY section title', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      expect(find.text('Display'), findsOneWidget);
+      expect(find.text('DISPLAY'), findsOneWidget);
     });
 
-    testWidgets('shows all four theme names', (tester) async {
+    testWidgets('shows HUD COLOR label and color picker', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      expect(find.text('Night'), findsOneWidget);
-      expect(find.text('Dark'), findsOneWidget);
-      expect(find.text('Star Wars'), findsOneWidget);
-      expect(find.text('Star Trek'), findsOneWidget);
+      expect(find.text('HUD COLOR'), findsOneWidget);
+      expect(find.byType(CustomPaint), findsWidgets);
     });
 
-    testWidgets('shows Telemetry HUD toggle', (tester) async {
+    testWidgets('shows TELEMETRY HUD toggle', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      expect(find.text('Telemetry HUD'), findsOneWidget);
-      expect(find.byType(SwitchListTile), findsOneWidget);
+      expect(find.text('TELEMETRY HUD'), findsOneWidget);
     });
 
     testWidgets('HUD toggle can be tapped', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      // Find the SwitchListTile and tap it
-      final switchTile = find.byType(SwitchListTile);
-      expect(switchTile, findsOneWidget);
-
-      await tester.tap(switchTile);
+      // Find the text and tap it
+      await tester.tap(find.text('TELEMETRY HUD'));
       await tester.pumpAndSettle();
-
-      // The toggle should have changed state (no crash)
-      expect(find.byType(SwitchListTile), findsOneWidget);
     });
   });
 
-  group('SettingsScreen navigation (WOE-066)', () {
+  group('SettingsScreen navigation', () {
     testWidgets('contains NavSpeedDial with settings active', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();

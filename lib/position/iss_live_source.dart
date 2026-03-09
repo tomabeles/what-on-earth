@@ -60,12 +60,39 @@ class ISSLiveSource implements PositionSource {
     try {
       final response = await _dio.get(_url);
       final data = response.data as Map<String, dynamic>;
+      // API returns velocity in km/h; convert to km/s for HUD display.
+      final velocityKmH = (data['velocity'] as num?)?.toDouble();
+      final newLat = (data['latitude'] as num).toDouble();
+      final newLon = (data['longitude'] as num).toDouble();
+
+      // Compute bearing from previous position.
+      double? bearing;
+      if (_lastKnown != null) {
+        final prev = _lastKnown!;
+        if (prev.latDeg != newLat || prev.lonDeg != newLon) {
+          bearing = OrbitalPosition.computeBearing(
+            prev,
+            OrbitalPosition(
+              latDeg: newLat,
+              lonDeg: newLon,
+              altKm: 0,
+              timestamp: DateTime.now().toUtc(),
+              sourceType: PositionSourceType.live,
+            ),
+          );
+        } else {
+          bearing = prev.bearingDeg;
+        }
+      }
+
       final pos = OrbitalPosition(
-        latDeg: (data['latitude'] as num).toDouble(),
-        lonDeg: (data['longitude'] as num).toDouble(),
+        latDeg: newLat,
+        lonDeg: newLon,
         altKm: (data['altitude'] as num).toDouble(),
         timestamp: DateTime.now().toUtc(),
         sourceType: PositionSourceType.live,
+        velocityKmS: velocityKmH != null ? velocityKmH / 3600 : null,
+        bearingDeg: bearing,
       );
       _lastKnown = pos;
       if (!_controller.isClosed) _controller.add(pos);

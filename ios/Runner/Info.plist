@@ -6,6 +6,10 @@
 	<string>What On Earth uses your camera to overlay the ISS position on your live view.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>What On Earth uses device motion sensors to orient the AR globe view.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>What On Earth uses your location to show your position on the globe.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>What On Earth uses your location to show your position on the globe.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

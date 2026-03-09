@@ -22,6 +22,7 @@ class HudData {
     this.pitchDeg,
     this.rollDeg,
     this.velocityKmS,
+    this.bearingDeg,
     this.sourceType,
     this.ageSeconds,
     this.fps,
@@ -34,6 +35,7 @@ class HudData {
   final double? pitchDeg;
   final double? rollDeg;
   final double? velocityKmS;
+  final double? bearingDeg;
   final PositionSourceType? sourceType;
   final int? ageSeconds;
   final int? fps;
@@ -138,7 +140,6 @@ class HudPainter extends CustomPainter {
     _paintPitchLadder(canvas, size);
     _paintRollIndicator(canvas, size);
     _paintDataStrip(canvas, size);
-    _paintFpsCounter(canvas, size);
   }
 
   // ── Reticle (WOE-070) ────────────────────────────────────────────────────
@@ -182,10 +183,10 @@ class HudPainter extends CustomPainter {
     final tapeRect =
         Rect.fromLTWH(0, tapeTop, size.width, tapeHeight);
 
-    // Background strip
+    // Background strip — slightly more transparent than other HUD panels
     canvas.drawRect(
       tapeRect,
-      Paint()..color = tokens.hudBackground,
+      Paint()..color = tokens.hudBackground.withValues(alpha: 0.3),
     );
 
     final tickPaint = Paint()
@@ -204,11 +205,11 @@ class HudPainter extends CustomPainter {
 
       final isMajor = deg % 10 == 0;
       final tickLen = isMajor ? 12.0 : 6.0;
-      final tickBottom = tapeTop + tapeHeight;
+      final tickTop = tapeTop;
 
       canvas.drawLine(
-        Offset(x, tickBottom - tickLen),
-        Offset(x, tickBottom),
+        Offset(x, tickTop),
+        Offset(x, tickTop + tickLen),
         tickPaint,
       );
 
@@ -218,7 +219,7 @@ class HudPainter extends CustomPainter {
         _drawText(
           canvas,
           label,
-          Offset(x, tapeTop + 4),
+          Offset(x, tapeTop + tapeHeight - 16),
           tokens.hudFontFamily,
           tokens.hudFontSize - 2,
           hudColor,
@@ -227,25 +228,70 @@ class HudPainter extends CustomPainter {
       }
     }
 
-    // Center notch (downward triangle)
+    // Bearing diamond at center of strip
     final cx = size.width / 2;
+    final bearing = data.bearingDeg;
+    if (bearing != null) {
+      // Check if bearing is within the visible arc
+      var delta = bearing - headingDeg;
+      // Normalize to -180..180
+      while (delta > 180) { delta -= 360; }
+      while (delta < -180) { delta += 360; }
+      final onScreen = delta.abs() <= visibleArc / 2;
+      final diamondColor = onScreen ? hudColor : tokens.hudWarning;
+
+      if (onScreen) {
+        // Position diamond on the tape based on delta from heading
+        final diamondX = cx + (delta / (visibleArc / 2)) * (size.width / 2);
+        _drawDiamond(canvas, diamondX, tapeTop + tapeHeight / 2, 5, diamondColor);
+      } else {
+        // Clamp to edge of strip and show numeric value
+        final atRight = delta > 0;
+        final diamondX = atRight ? size.width - 8.0 : 8.0;
+        _drawDiamond(canvas, diamondX, tapeTop + tapeHeight / 2, 5, diamondColor);
+        // Show bearing value beside the diamond
+        final brgText = '${bearing.round()}°';
+        _drawText(
+          canvas,
+          brgText,
+          Offset(atRight ? diamondX - 10 : diamondX + 10, tapeTop + tapeHeight / 2 - 6),
+          tokens.hudFontFamily,
+          tokens.hudFontSize - 2,
+          diamondColor,
+          align: atRight ? TextAlign.right : TextAlign.left,
+        );
+      }
+    }
+
+    // Heading triangle (upward, at bottom of strip)
+    final notchBottom = tapeTop + tapeHeight;
     final notchPath = Path()
-      ..moveTo(cx - 6, tapeTop)
-      ..lineTo(cx + 6, tapeTop)
-      ..lineTo(cx, tapeTop + 8)
+      ..moveTo(cx - 6, notchBottom)
+      ..lineTo(cx + 6, notchBottom)
+      ..lineTo(cx, notchBottom - 8)
       ..close();
     canvas.drawPath(notchPath, Paint()..color = hudColor);
 
-    // Current heading text above tape
+    // Current heading text below tape
     _drawText(
       canvas,
-      headingDeg.round().toString(),
-      Offset(cx, tapeTop - 14),
+      '${headingDeg.round()}°',
+      Offset(cx, notchBottom + 2),
       tokens.hudFontFamily,
       tokens.hudFontSize,
       hudColor,
       align: TextAlign.center,
     );
+  }
+
+  void _drawDiamond(Canvas canvas, double x, double y, double r, Color color) {
+    final path = Path()
+      ..moveTo(x, y - r)
+      ..lineTo(x + r, y)
+      ..lineTo(x, y + r)
+      ..lineTo(x - r, y)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
   }
 
   // ── Pitch Ladder (WOE-072) ───────────────────────────────────────────────
@@ -284,6 +330,33 @@ class HudPainter extends CustomPainter {
           hudColor.withValues(alpha: 0.6),
         );
       }
+    }
+
+    // Pitch diamond indicator — shows current pitch on the ladder
+    const visibleRange = 30.0; // ladder shows ±30°
+    final pitch = pitchDeg;
+    final pitchInRange = pitch.abs() <= visibleRange;
+    final pitchDiamondColor = pitchInRange ? hudColor : tokens.hudWarning;
+
+    if (pitchInRange) {
+      final dy = centerY - pitch * pxPerDeg;
+      _drawDiamond(canvas, xOffset, dy, 4, pitchDiamondColor);
+    } else {
+      // Clamp to top or bottom of ladder and show value
+      final atTop = pitch > 0;
+      final dy = atTop
+          ? centerY - visibleRange * pxPerDeg
+          : centerY + visibleRange * pxPerDeg;
+      _drawDiamond(canvas, xOffset, dy, 4, pitchDiamondColor);
+      final pitchText = '${pitch.round()}°';
+      _drawText(
+        canvas,
+        pitchText,
+        Offset(xOffset + 10, dy - 5),
+        tokens.hudFontFamily,
+        tokens.hudFontSize - 2,
+        pitchDiamondColor,
+      );
     }
   }
 
@@ -361,20 +434,17 @@ class HudPainter extends CustomPainter {
 
     final bottomY = size.height - margin - 80; // Above controls/FAB area
 
-    // Left column background
-    final leftRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(margin, bottomY, colWidth, 4 * rowHeight + 2 * padding),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(leftRect, Paint()..color = tokens.hudBackground);
-
-    // Right column background
-    final rightRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-          size.width - margin - colWidth, bottomY, colWidth, 4 * rowHeight + 2 * padding),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(rightRect, Paint()..color = tokens.hudBackground);
+    // Left column background (4 rows: LAT, LON, ALT, HDG)
+    final leftRect =
+        Rect.fromLTWH(margin, bottomY, colWidth, 4 * rowHeight + 2 * padding);
+    canvas.drawRect(
+        leftRect, Paint()..color = tokens.hudBackground.withValues(alpha: 0.3));
+    canvas.drawRect(
+        leftRect,
+        Paint()
+          ..color = const Color(0xBFC0C0C0)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0);
 
     // Left column data
     final leftX = margin + padding;
@@ -387,33 +457,63 @@ class HudPainter extends CustomPainter {
     _drawLabelValue(canvas, 'ALT', _formatAlt(data.altKm), leftX, y);
     y += rowHeight;
     _drawLabelValue(
-        canvas, 'HDG', data.headingDeg?.round().toString() ?? '--', leftX, y);
+        canvas, 'HDG', data.headingDeg != null ? '${data.headingDeg!.round()}°' : '--', leftX, y);
+
+    // Right column background (3 rows: VEL, TRK, SRC)
+    final rightRect3 = Rect.fromLTWH(size.width - margin - colWidth, bottomY,
+        colWidth, 3 * rowHeight + 2 * padding);
+    canvas.drawRect(rightRect3,
+        Paint()..color = tokens.hudBackground.withValues(alpha: 0.3));
+    canvas.drawRect(
+        rightRect3,
+        Paint()
+          ..color = const Color(0xBFC0C0C0)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0);
 
     // Right column data
     final rightX = size.width - margin - colWidth + padding;
     y = bottomY + padding;
 
-    final velText = (data.sourceType == PositionSourceType.live &&
-            data.velocityKmS != null)
+    final velText = data.velocityKmS != null
         ? '${data.velocityKmS!.toStringAsFixed(2)} km/s'
         : '--';
     _drawLabelValue(canvas, 'VEL', velText, rightX, y);
     y += rowHeight;
 
-    _drawLabelValue(
-        canvas, 'SRC', _sourceLabel(data.sourceType), rightX, y);
+    final trkText = data.bearingDeg != null
+        ? '${data.bearingDeg!.round()}°'
+        : '--';
+    _drawLabelValue(canvas, 'TRK', trkText, rightX, y);
     y += rowHeight;
 
-    if (data.sourceType != PositionSourceType.static) {
-      final ageText =
-          data.ageSeconds != null ? '${data.ageSeconds}s' : '--';
-      _drawLabelValue(canvas, 'AGE', ageText, rightX, y);
-    }
-    y += rowHeight;
-
-    _drawLabelValue(
-        canvas, 'PCH', _formatSigned(data.pitchDeg), rightX, y);
+    // SRC with connectivity dot (bottom of right column)
+    _drawSrcWithDot(canvas, rightX, y);
   }
+
+  void _drawSrcWithDot(Canvas canvas, double x, double y) {
+    // Label
+    _drawText(canvas, 'SRC ', Offset(x, y), tokens.hudFontFamily,
+        tokens.hudFontSize - 2, tokens.hudSecondary);
+    // Colored dot indicating connectivity/source
+    final dotColor = _sourceColor(data.sourceType);
+    canvas.drawCircle(
+      Offset(x + 34, y + tokens.hudFontSize / 2),
+      4,
+      Paint()..color = dotColor,
+    );
+    // Source text
+    _drawText(canvas, _sourceLabel(data.sourceType), Offset(x + 42, y),
+        tokens.hudFontFamily, tokens.hudFontSize, hudColor);
+  }
+
+  Color _sourceColor(PositionSourceType? type) => switch (type) {
+        PositionSourceType.live => const Color(0xFF4CAF50),
+        PositionSourceType.estimated => const Color(0xFFFFC107),
+        PositionSourceType.gps => const Color(0xFF2196F3),
+        PositionSourceType.static => tokens.hudSecondary,
+        null => tokens.hudSecondary,
+      };
 
   void _drawLabelValue(
       Canvas canvas, String label, String value, double x, double y) {
@@ -438,35 +538,13 @@ class HudPainter extends CustomPainter {
   static String _formatAlt(double? v) =>
       v != null ? '${v.toStringAsFixed(1)} km' : '--';
 
-  static String _formatSigned(double? v) =>
-      v != null ? (v >= 0 ? '+${v.round()}' : '${v.round()}') : '--';
-
   static String _sourceLabel(PositionSourceType? type) => switch (type) {
-        PositionSourceType.live => 'Live',
+        PositionSourceType.live => 'ISS',
         PositionSourceType.estimated => 'TLE',
-        PositionSourceType.static => 'Static',
+        PositionSourceType.gps => 'GPS',
+        PositionSourceType.static => 'STATIC',
         null => '--',
       };
-
-  // ── FPS Counter (WOE-075) ────────────────────────────────────────────────
-
-  void _paintFpsCounter(Canvas canvas, Size size) {
-    final fpsColor = fps == null || fps! >= 25
-        ? tokens.hudSecondary
-        : fps! >= 15
-            ? tokens.hudWarning
-            : tokens.hudDanger;
-    final text = 'FPS: ${fps ?? '--'}';
-    _drawText(
-      canvas,
-      text,
-      Offset(size.width - 16, topPadding + 8),
-      tokens.hudFontFamily,
-      tokens.hudFontSize - 2,
-      fpsColor,
-      align: TextAlign.right,
-    );
-  }
 
   // ── Text helper ──────────────────────────────────────────────────────────
 

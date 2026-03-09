@@ -6,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../globe/bridge.dart';
+import 'gps_position_source.dart';
 import 'iss_live_source.dart';
 import 'position_source.dart';
 import 'static_position_source.dart';
@@ -68,6 +69,10 @@ Future<({double lat, double lon, double altKm})> staticCoordinates(
 /// Production [StaticPositionSource] instance. Override in tests with a fake.
 @riverpod
 PositionSource staticPositionSource(Ref ref) => _DeferredStaticSource(ref);
+
+/// Production [GpsPositionSource] instance. Override in tests with a fake.
+@riverpod
+PositionSource gpsPositionSource(Ref ref) => GpsPositionSource();
 
 /// Lazy-resolved [StaticPositionSource] that reads coordinates from
 /// SharedPreferences on first [start].
@@ -242,6 +247,8 @@ class PositionController extends _$PositionController {
       await _switchTo(ref.read(tlePositionSourceProvider));
     } else if (mode == PositionSourceType.static) {
       await _switchTo(ref.read(staticPositionSourceProvider));
+    } else if (mode == PositionSourceType.gps) {
+      await _switchTo(ref.read(gpsPositionSourceProvider));
     }
   }
 }

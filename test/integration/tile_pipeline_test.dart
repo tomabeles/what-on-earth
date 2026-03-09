@@ -62,16 +62,18 @@ void main() {
       expect(response.statusCode, 404,
           reason: 'Health probe should fail before tiles are downloaded');
 
-      // Download tiles (zoom 0 only = 1 tile, fast)
+      // Download satellite tiles (zoom 0 only = 1 tile, fast).
+      // The health probe checks for tiles/satellite/0/0/0.jpg.
       final downloader = TileDownloader(concurrency: 1);
       await downloader
           .downloadLayer(
-            layerId: 'base',
+            layerId: 'satellite',
             sourceUrlTemplate:
-                'http://localhost:${origin.port}/{z}/{x}/{y}.png',
+                'http://localhost:${origin.port}/{z}/{x}/{y}.jpg',
             documentsPath: tmpDir.path,
             minZoom: 0,
             maxZoom: 0,
+            ext: 'jpg',
           )
           .drain<void>();
 
@@ -79,7 +81,7 @@ void main() {
       request = await client.getUrl(Uri.parse('http://localhost:19765/'));
       response = await request.close();
       expect(response.statusCode, 200,
-          reason: 'Health probe should succeed after base tiles downloaded');
+          reason: 'Health probe should succeed after satellite tiles downloaded');
 
       client.close();
     });
@@ -127,22 +129,23 @@ void main() {
     test('multiple layers can be downloaded and served', () async {
       final downloader = TileDownloader(concurrency: 2);
 
-      // Download base layer
+      // Download satellite layer
       await downloader
           .downloadLayer(
-            layerId: 'base',
+            layerId: 'satellite',
             sourceUrlTemplate:
-                'http://localhost:${origin.port}/{z}/{x}/{y}.png',
+                'http://localhost:${origin.port}/{z}/{x}/{y}.jpg',
             documentsPath: tmpDir.path,
             minZoom: 0,
             maxZoom: 0,
+            ext: 'jpg',
           )
           .drain<void>();
 
-      // Download relief layer
+      // Download nightlights layer
       await downloader
           .downloadLayer(
-            layerId: 'relief',
+            layerId: 'nightlights',
             sourceUrlTemplate:
                 'http://localhost:${origin.port}/{z}/{x}/{y}.png',
             documentsPath: tmpDir.path,
@@ -158,12 +161,12 @@ void main() {
 
       // Both layers should be available
       var request = await client.getUrl(
-          Uri.parse('http://localhost:19767/tiles/base/0/0/0.png'));
+          Uri.parse('http://localhost:19767/tiles/satellite/0/0/0.jpg'));
       var response = await request.close();
       expect(response.statusCode, 200);
 
       request = await client.getUrl(
-          Uri.parse('http://localhost:19767/tiles/relief/0/0/0.png'));
+          Uri.parse('http://localhost:19767/tiles/nightlights/0/0/0.png'));
       response = await request.close();
       expect(response.statusCode, 200);
 
@@ -221,6 +224,31 @@ void main() {
           .getUrl(Uri.parse('http://localhost:19768/tiles/base/0/0/0.png'));
       final response = await request.close();
       expect(response.statusCode, 200);
+      client.close();
+    });
+
+    test('responses include CORS headers', () async {
+      final tileFile = File('${tmpDir.path}/tiles/satellite/0/0/0.jpg');
+      await tileFile.parent.create(recursive: true);
+      await tileFile.writeAsBytes([0xFF, 0xD8, 0xFF, 0xE0]);
+
+      tileServer = TileServer(port: 19769);
+      await tileServer.start(tmpDir.path);
+
+      final client = HttpClient();
+
+      // Health endpoint should have CORS
+      var request =
+          await client.getUrl(Uri.parse('http://localhost:19769/'));
+      var response = await request.close();
+      expect(response.headers.value('access-control-allow-origin'), '*');
+
+      // Tile endpoint should have CORS
+      request = await client.getUrl(
+          Uri.parse('http://localhost:19769/tiles/satellite/0/0/0.jpg'));
+      response = await request.close();
+      expect(response.headers.value('access-control-allow-origin'), '*');
+
       client.close();
     });
   });

@@ -151,6 +151,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   static String _sourceLabel(PositionSourceType? type) => switch (type) {
         PositionSourceType.live => 'ISS Live',
         PositionSourceType.estimated => 'TLE Estimated',
+        PositionSourceType.gps => 'GPS',
         PositionSourceType.static => 'Static',
         null => 'Connecting\u2026',
       };
@@ -159,6 +160,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
       switch (type) {
         PositionSourceType.live => tokens.statusLive,
         PositionSourceType.estimated => tokens.statusEstimated,
+        PositionSourceType.gps => tokens.statusLive,
         PositionSourceType.static => tokens.statusOffline,
         null => tokens.statusOffline,
       };

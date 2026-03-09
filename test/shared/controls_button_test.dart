@@ -2,108 +2,83 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:what_on_earth/shared/controls_button.dart';
+import 'package:what_on_earth/shared/hud_command_panel.dart';
 import 'package:what_on_earth/shared/layer_control_panel.dart';
 import 'package:what_on_earth/shared/theme.dart';
 
-Widget _wrap({bool isMapMode = false}) {
+Widget _wrap() {
   return ProviderScope(
     child: MaterialApp(
       theme: buildThemeData(AppThemes.night),
-      home: Scaffold(
-        body: ControlsButton(isMapMode: isMapMode),
+      home: const Scaffold(
+        body: HudCommandPanel(),
       ),
     ),
   );
 }
 
 void main() {
-  group('ControlsButton + LayerControlPanel (WOE-068)', () {
+  group('HudCommandPanel', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    testWidgets('shows Controls label', (tester) async {
+    testWidgets('shows CTRL> and SET> buttons', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Controls'), findsOneWidget);
+      expect(find.text('CTRL>'), findsOneWidget);
+      expect(find.text('SET>'), findsOneWidget);
     });
 
-    testWidgets('opens panel on tap', (tester) async {
+    testWidgets('opens layer toggles on CTRL> tap', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      // Panel should not be visible
-      expect(find.byType(LayerControlPanel), findsNothing);
+      expect(find.byType(LayerToggles), findsNothing);
 
-      // Tap the controls button
-      await tester.tap(find.textContaining('Controls'));
+      await tester.tap(find.text('CTRL>'));
       await tester.pumpAndSettle();
 
-      // Panel should be visible
-      expect(find.byType(LayerControlPanel), findsOneWidget);
+      expect(find.byType(LayerToggles), findsOneWidget);
     });
 
-    testWidgets('panel shows all 7 layer toggles', (tester) async {
+    testWidgets('layer toggles show Stars, Borders, and Water',
+        (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.textContaining('Controls'));
+      await tester.tap(find.text('CTRL>'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Camera'), findsOneWidget);
-      expect(find.text('Relief shading'), findsOneWidget);
-      expect(find.text('Cloud cover'), findsOneWidget);
-      expect(find.text('Country borders'), findsOneWidget);
-      expect(find.text('Coastlines'), findsOneWidget);
-      expect(find.text('Cities & labels'), findsOneWidget);
-      expect(find.text('Rivers & lakes'), findsOneWidget);
+      expect(find.text('STARS'), findsOneWidget);
+      expect(find.text('BORDERS'), findsOneWidget);
+      expect(find.text('WATER'), findsOneWidget);
     });
 
-    testWidgets('camera row hidden in map mode', (tester) async {
-      await tester.pumpWidget(_wrap(isMapMode: true));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.textContaining('Controls'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Camera'), findsNothing);
-      // Others still visible
-      expect(find.text('Relief shading'), findsOneWidget);
-    });
-
-    testWidgets('toggles update state', (tester) async {
+    testWidgets('toggle updates state without crash', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.textContaining('Controls'));
+      await tester.tap(find.text('CTRL>'));
       await tester.pumpAndSettle();
 
-      // Rivers & lakes default is OFF — find its switch
-      final switches = find.byType(Switch);
-      expect(switches, findsNWidgets(7));
-
-      // Toggle one of the switches
-      await tester.tap(switches.last);
+      // Tap the first layer toggle (STARS)
+      await tester.tap(find.text('STARS'));
       await tester.pump();
-
-      // Verify the state changed (no crash)
     });
 
-    testWidgets('closes panel on second tap of controls', (tester) async {
+    testWidgets('dismisses modal on second CTRL> tap', (tester) async {
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      // Open
-      await tester.tap(find.textContaining('Controls'));
+      await tester.tap(find.text('CTRL>'));
       await tester.pumpAndSettle();
-      expect(find.byType(LayerControlPanel), findsOneWidget);
+      expect(find.byType(LayerToggles), findsOneWidget);
 
-      // Close
-      await tester.tap(find.textContaining('Controls'));
+      await tester.tap(find.text('CTRL>'));
       await tester.pumpAndSettle();
-      expect(find.byType(LayerControlPanel), findsNothing);
+      expect(find.byType(LayerToggles), findsNothing);
     });
   });
 }

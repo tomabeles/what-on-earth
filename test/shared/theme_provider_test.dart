@@ -5,105 +5,59 @@ import 'package:what_on_earth/shared/theme.dart';
 import 'package:what_on_earth/shared/theme_provider.dart';
 
 void main() {
-  group('ThemeNotifier', () {
-    test('default theme is night', () {
+  group('ThemeNotifier (hue-based)', () {
+    test('default hue is 120 (fighter-jet green)', () {
       SharedPreferences.setMockInitialValues({});
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
       final theme = container.read(themeProvider);
-      expect(theme.id, 'night');
+      expect(theme.id, 'custom_120');
+      expect(container.read(themeProvider.notifier).hue, 120.0);
     });
 
-    test('setTheme updates state to dark', () async {
+    test('setHue updates state', () async {
       SharedPreferences.setMockInitialValues({});
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      await container.read(themeProvider.notifier).setTheme('dark');
-      expect(container.read(themeProvider).id, 'dark');
+      await container.read(themeProvider.notifier).setHue(240.0);
+      expect(container.read(themeProvider.notifier).hue, 240.0);
+      expect(container.read(themeProvider).id, 'custom_240');
     });
 
-    test('setTheme updates state to starwars', () async {
+    test('setHue persists to SharedPreferences', () async {
       SharedPreferences.setMockInitialValues({});
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      await container.read(themeProvider.notifier).setTheme('starwars');
-      expect(container.read(themeProvider).id, 'starwars');
-    });
-
-    test('setTheme updates state to startrek', () async {
-      SharedPreferences.setMockInitialValues({});
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-
-      await container.read(themeProvider.notifier).setTheme('startrek');
-      expect(container.read(themeProvider).id, 'startrek');
-    });
-
-    test('setTheme with unknown id falls back to night', () async {
-      SharedPreferences.setMockInitialValues({});
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-
-      await container.read(themeProvider.notifier).setTheme('nonexistent');
-      expect(container.read(themeProvider).id, 'night');
-    });
-
-    test('setTheme persists to SharedPreferences', () async {
-      SharedPreferences.setMockInitialValues({});
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-
-      await container.read(themeProvider.notifier).setTheme('dark');
+      await container.read(themeProvider.notifier).setHue(60.0);
 
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('ui_theme_id'), 'dark');
+      expect(prefs.getDouble('hud_hue'), 60.0);
     });
 
-    test('loads persisted theme on build', () async {
-      SharedPreferences.setMockInitialValues({'ui_theme_id': 'starwars'});
+    test('loads persisted hue on build', () async {
+      SharedPreferences.setMockInitialValues({'hud_hue': 300.0});
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      // Initial synchronous state is night (default)
-      expect(container.read(themeProvider).id, 'night');
+      // Initial synchronous state is default hue
+      expect(container.read(themeProvider.notifier).hue, kDefaultHudHue);
 
       // Pump microtask queue so _loadSaved() completes
       await Future<void>.delayed(Duration.zero);
-      expect(container.read(themeProvider).id, 'starwars');
+      expect(container.read(themeProvider.notifier).hue, 300.0);
     });
 
-    test('loads persisted theme and returns correct tokens', () async {
-      SharedPreferences.setMockInitialValues({'ui_theme_id': 'startrek'});
+    test('generated tokens have correct hudPrimary for hue', () async {
+      SharedPreferences.setMockInitialValues({});
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      // Force provider to initialize
-      container.read(themeProvider);
-
-      // Pump microtask queue so _loadSaved() completes
-      await Future<void>.delayed(Duration.zero);
-
-      final theme = container.read(themeProvider);
-      expect(theme.id, 'startrek');
-      expect(theme.tokens.hudPrimary, AppThemes.starTrek.tokens.hudPrimary);
-    });
-
-    test('ignores invalid persisted theme id', () async {
-      SharedPreferences.setMockInitialValues({'ui_theme_id': 'bogus'});
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-
-      // Force provider to initialize
-      container.read(themeProvider);
-
-      // Pump microtask queue so _loadSaved() completes
-      await Future<void>.delayed(Duration.zero);
-
-      // AppThemeRegistry.find('bogus') returns night
-      expect(container.read(themeProvider).id, 'night');
+      final tokens = container.read(themeProvider).tokens;
+      // Default hue 120 should produce a green-ish hudPrimary
+      expect(tokens.hudPrimary.g, greaterThan(tokens.hudPrimary.r));
     });
   });
 }

@@ -18,13 +18,9 @@ class LayerDef {
 }
 
 const _layers = [
-  LayerDef('camera', 'Camera'),
-  LayerDef('relief', 'Relief shading'),
-  LayerDef('clouds', 'Cloud cover'),
-  LayerDef('borders', 'Country borders'),
-  LayerDef('coastlines', 'Coastlines'),
-  LayerDef('cities', 'Cities & labels'),
-  LayerDef('rivers', 'Rivers & lakes', defaultOn: false),
+  LayerDef('stars', 'STARS'),
+  LayerDef('borders', 'BORDERS'),
+  LayerDef('water', 'WATER'),
 ];
 
 // ---------------------------------------------------------------------------
@@ -43,10 +39,9 @@ final layerVisibilityProvider =
 class LayerVisibilityNotifier extends Notifier<Map<String, bool>> {
   @override
   Map<String, bool> build() {
-    // Start with defaults; camera always ON
     final defaults = <String, bool>{};
     for (final l in _layers) {
-      defaults[l.id] = l.id == 'camera' ? true : l.defaultOn;
+      defaults[l.id] = l.defaultOn;
     }
     _loadFromPrefs(defaults);
     return defaults;
@@ -57,7 +52,6 @@ class LayerVisibilityNotifier extends Notifier<Map<String, bool>> {
     if (!ref.mounted) return;
     final updated = Map<String, bool>.from(defaults);
     for (final l in _layers) {
-      if (l.id == 'camera') continue; // Camera always ON on cold launch
       final stored = prefs.getBool('layer_visible_${l.id}');
       if (stored != null) updated[l.id] = stored;
     }
@@ -67,10 +61,8 @@ class LayerVisibilityNotifier extends Notifier<Map<String, bool>> {
   Future<void> toggle(String layerId) async {
     final current = state[layerId] ?? true;
     state = {...state, layerId: !current};
-    if (layerId != 'camera') {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('layer_visible_$layerId', !current);
-    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('layer_visible_$layerId', !current);
   }
 }
 
@@ -78,21 +70,10 @@ class LayerVisibilityNotifier extends Notifier<Map<String, bool>> {
 // LayerControlPanel widget
 // ---------------------------------------------------------------------------
 
-/// Left-anchored overlay above Controls button with toggle switches.
-///
-/// Reference: UI_SPEC SS5.3
-class LayerControlPanel extends ConsumerWidget {
-  const LayerControlPanel({
-    super.key,
-    this.isMapMode = false,
-    this.onClose,
-  });
-
-  /// When true, the Camera row is hidden.
-  final bool isMapMode;
-
-  /// Called when the panel should close.
-  final VoidCallback? onClose;
+/// Bare list of layer toggle switches — no container chrome.
+/// Reusable inside different shell widgets (modals, panels, etc.).
+class LayerToggles extends ConsumerWidget {
+  const LayerToggles({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -100,8 +81,55 @@ class LayerControlPanel extends ConsumerWidget {
     final visibility = ref.watch(layerVisibilityProvider);
     final notifier = ref.read(layerVisibilityProvider.notifier);
 
-    final visibleLayers =
-        _layers.where((l) => !(isMapMode && l.id == 'camera')).toList();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final layer in _layers)
+          SizedBox(
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      layer.label,
+                      style: TextStyle(
+                        color: tokens.hudPrimary,
+                        fontFamily: tokens.hudFontFamily,
+                        fontSize: tokens.hudFontSize,
+                      ),
+                    ),
+                  ),
+                  SquareToggle(
+                    value: visibility[layer.id] ?? layer.defaultOn,
+                    onChanged: () => notifier.toggle(layer.id),
+                    tokens: tokens,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Left-anchored overlay above Controls button with toggle switches.
+///
+/// Reference: UI_SPEC SS5.3
+class LayerControlPanel extends ConsumerWidget {
+  const LayerControlPanel({
+    super.key,
+    this.onClose,
+  });
+
+  /// Called when the panel should close.
+  final VoidCallback? onClose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = Theme.of(context).extension<AppTokens>()!;
 
     return Container(
       width: 220,
@@ -109,37 +137,48 @@ class LayerControlPanel extends ConsumerWidget {
         color: tokens.surfaceOverlay,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final layer in visibleLayers)
-            SizedBox(
-              height: 44,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        layer.label,
-                        style: TextStyle(
-                          color: tokens.hudPrimary,
-                          fontFamily: tokens.hudFontFamily,
-                          fontSize: tokens.hudFontSize,
-                        ),
-                      ),
-                    ),
-                    Switch(
-                      value: visibility[layer.id] ?? layer.defaultOn,
-                      onChanged: (_) => notifier.toggle(layer.id),
-                      activeTrackColor: tokens.hudPrimary,
-                      inactiveTrackColor: tokens.borderPrimary,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+      child: const LayerToggles(),
+    );
+  }
+}
+
+/// Square on/off toggle matching the fighter-jet cockpit aesthetic.
+class SquareToggle extends StatelessWidget {
+  const SquareToggle({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    required this.tokens,
+  });
+
+  final bool value;
+  final VoidCallback onChanged;
+  final AppTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onChanged,
+      child: Container(
+        width: 40,
+        height: 22,
+        decoration: BoxDecoration(
+          color: value
+              ? tokens.hudPrimary.withValues(alpha: 0.25)
+              : Colors.transparent,
+          border: Border.all(
+            color: const Color(0xBFC0C0C0),
+            width: 1,
+          ),
+        ),
+        child: Align(
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 18,
+            height: 20,
+            color: value ? tokens.hudPrimary : tokens.hudSecondary,
+          ),
+        ),
       ),
     );
   }

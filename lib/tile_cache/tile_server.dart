@@ -78,13 +78,35 @@ class _IsolateConfig {
   });
 }
 
+/// CORS middleware — the WebView page is served from localhost:8080 so
+/// requests to localhost:8765 are cross-origin. Without these headers the
+/// browser blocks the health probe fetch() and all tile requests.
+shelf.Middleware _cors() {
+  return (shelf.Handler inner) {
+    return (shelf.Request request) async {
+      // Handle CORS preflight
+      if (request.method == 'OPTIONS') {
+        return shelf.Response.ok('', headers: _corsHeaders);
+      }
+      final response = await inner(request);
+      return response.change(headers: _corsHeaders);
+    };
+  };
+}
+
+const _corsHeaders = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': '*',
+};
+
 Future<void> _isolateEntry(_IsolateConfig config) async {
   final router = Router()
     ..get('/', (shelf.Request request) {
       // Health probe used by CesiumJS (layers.js) to decide between local
-      // tiles and online OSM fallback.  Return 200 only when the root base
+      // tiles and online fallback.  Return 200 only when the root satellite
       // tile exists on disk so the probe fails before tiles are downloaded.
-      final probe = File('${config.documentsPath}/tiles/base/0/0/0.png');
+      final probe = File('${config.documentsPath}/tiles/satellite/0/0/0.jpg');
       if (probe.existsSync()) {
         return shelf.Response.ok('ok');
       }
@@ -98,9 +120,7 @@ Future<void> _isolateEntry(_IsolateConfig config) async {
     );
 
   final handler = const shelf.Pipeline()
-      .addMiddleware(shelf.logRequests(
-        logger: (msg, isError) {}, // silent in production
-      ))
+      .addMiddleware(_cors())
       .addHandler(router.call);
 
   await shelf_io.serve(handler, 'localhost', config.port);

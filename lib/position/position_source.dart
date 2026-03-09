@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// How the current ISS position was obtained.
 enum PositionSourceType {
   /// Live data from the WhereTheISS.at API.
@@ -8,6 +10,9 @@ enum PositionSourceType {
 
   /// Fixed position used for training / demo scenarios.
   static,
+
+  /// Real-time GPS position from the device.
+  gps,
 }
 
 /// Immutable snapshot of the ISS orbital position at a point in time.
@@ -21,6 +26,8 @@ class OrbitalPosition {
     required this.altKm,
     required this.timestamp,
     required this.sourceType,
+    this.velocityKmS,
+    this.bearingDeg,
   });
 
   final double latDeg;
@@ -28,6 +35,8 @@ class OrbitalPosition {
   final double altKm;
   final DateTime timestamp;
   final PositionSourceType sourceType;
+  final double? velocityKmS;
+  final double? bearingDeg;
 
   OrbitalPosition copyWith({
     double? latDeg,
@@ -35,6 +44,8 @@ class OrbitalPosition {
     double? altKm,
     DateTime? timestamp,
     PositionSourceType? sourceType,
+    double? velocityKmS,
+    double? bearingDeg,
   }) =>
       OrbitalPosition(
         latDeg: latDeg ?? this.latDeg,
@@ -42,6 +53,8 @@ class OrbitalPosition {
         altKm: altKm ?? this.altKm,
         timestamp: timestamp ?? this.timestamp,
         sourceType: sourceType ?? this.sourceType,
+        velocityKmS: velocityKmS ?? this.velocityKmS,
+        bearingDeg: bearingDeg ?? this.bearingDeg,
       );
 
   /// Serialises to the `UPDATE_POSITION` bridge message payload format.
@@ -51,6 +64,8 @@ class OrbitalPosition {
         'altKm': altKm,
         'ts': timestamp.millisecondsSinceEpoch,
         'source': sourceType.name, // 'live' | 'estimated' | 'static'
+        if (velocityKmS != null) 'velocityKmS': velocityKmS,
+        if (bearingDeg != null) 'bearingDeg': bearingDeg,
       };
 
   factory OrbitalPosition.fromJson(Map<String, dynamic> json) =>
@@ -63,6 +78,8 @@ class OrbitalPosition {
           isUtc: true,
         ),
         sourceType: PositionSourceType.values.byName(json['source'] as String),
+        velocityKmS: (json['velocityKmS'] as num?)?.toDouble(),
+        bearingDeg: (json['bearingDeg'] as num?)?.toDouble(),
       );
 
   @override
@@ -73,7 +90,9 @@ class OrbitalPosition {
           lonDeg == other.lonDeg &&
           altKm == other.altKm &&
           timestamp.isAtSameMomentAs(other.timestamp) &&
-          sourceType == other.sourceType;
+          sourceType == other.sourceType &&
+          velocityKmS == other.velocityKmS &&
+          bearingDeg == other.bearingDeg;
 
   @override
   int get hashCode => Object.hash(
@@ -82,12 +101,28 @@ class OrbitalPosition {
         altKm,
         timestamp.millisecondsSinceEpoch,
         sourceType,
+        velocityKmS,
+        bearingDeg,
       );
 
   @override
   String toString() =>
       'OrbitalPosition(lat=$latDeg, lon=$lonDeg, alt=${altKm}km, '
+      'vel=${velocityKmS ?? "--"}km/s, brg=${bearingDeg ?? "--"}°, '
       'ts=$timestamp, source=${sourceType.name})';
+
+  /// Computes the initial bearing (forward azimuth) in degrees from
+  /// [from] to [to] using the spherical law of cosines.
+  static double computeBearing(OrbitalPosition from, OrbitalPosition to) {
+    final lat1 = from.latDeg * math.pi / 180;
+    final lat2 = to.latDeg * math.pi / 180;
+    final dLon = (to.lonDeg - from.lonDeg) * math.pi / 180;
+    final y = math.sin(dLon) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+    final brg = math.atan2(y, x) * 180 / math.pi;
+    return (brg + 360) % 360;
+  }
 }
 
 /// Contract implemented by all ISS position data sources.

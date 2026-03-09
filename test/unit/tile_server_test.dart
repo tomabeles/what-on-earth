@@ -41,11 +41,11 @@ void main() {
       client.close();
     });
 
-    test('health probe returns 200 when base tiles exist', () async {
-      // Create the probe tile
-      final tileFile = File('${tmpDir.path}/tiles/base/0/0/0.png');
+    test('health probe returns 200 when satellite tiles exist', () async {
+      // Create the probe tile (satellite layer, JPEG)
+      final tileFile = File('${tmpDir.path}/tiles/satellite/0/0/0.jpg');
       await tileFile.parent.create(recursive: true);
-      await tileFile.writeAsBytes([137, 80, 78, 71]); // PNG magic bytes
+      await tileFile.writeAsBytes([0xFF, 0xD8, 0xFF, 0xE0]); // JPEG magic
 
       server = TileServer(port: 18767);
       await server.start(tmpDir.path);

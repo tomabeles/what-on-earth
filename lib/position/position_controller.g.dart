@@ -240,6 +240,52 @@ final class StaticPositionSourceProvider
 String _$staticPositionSourceHash() =>
     r'3c61e9729f78bca6c8e55b618e5c7b423a91f29e';
 
+/// Production [GpsPositionSource] instance. Override in tests with a fake.
+
+@ProviderFor(gpsPositionSource)
+final gpsPositionSourceProvider = GpsPositionSourceProvider._();
+
+/// Production [GpsPositionSource] instance. Override in tests with a fake.
+
+final class GpsPositionSourceProvider
+    extends $FunctionalProvider<PositionSource, PositionSource, PositionSource>
+    with $Provider<PositionSource> {
+  /// Production [GpsPositionSource] instance. Override in tests with a fake.
+  GpsPositionSourceProvider._()
+      : super(
+          from: null,
+          argument: null,
+          retry: null,
+          name: r'gpsPositionSourceProvider',
+          isAutoDispose: true,
+          dependencies: null,
+          $allTransitiveDependencies: null,
+        );
+
+  @override
+  String debugGetCreateSourceHash() => _$gpsPositionSourceHash();
+
+  @$internal
+  @override
+  $ProviderElement<PositionSource> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  PositionSource create(Ref ref) {
+    return gpsPositionSource(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(PositionSource value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<PositionSource>(value),
+    );
+  }
+}
+
+String _$gpsPositionSourceHash() => r'aa3c5f9bee027c4eb0772106523b7fbeaff5a170';
+
 /// Manages the active [PositionSource] and exposes a unified position stream.
 ///
 /// State is [AsyncValue<PositionSourceStatus>]; it is `loading` briefly while
@@ -308,7 +354,7 @@ final class PositionControllerProvider
 }
 
 String _$positionControllerHash() =>
-    r'4747d06ef93735b9ddd4ad0d1e9eb00c1bde3f22';
+    r'f5c3765e735b6860f93db98f0c75c15f9b775aa8';
 
 /// Manages the active [PositionSource] and exposes a unified position stream.
 ///

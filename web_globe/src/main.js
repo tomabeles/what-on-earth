@@ -5,7 +5,7 @@
 import * as Cesium from 'cesium';
 import * as satellite from 'satellite.js';
 import { initTLE, propagateNow } from './satellite_propagator.js';
-import { loadVectorLayers, loadRasterLayers, layersRegistry } from './layers.js';
+import { loadBorders, loadWaterLabels, loadRasterLayers, layersRegistry } from './layers.js';
 import { syncPins } from './pins.js';
 import { calculateNextPass } from './satellite_propagator.js';
 
@@ -48,22 +48,24 @@ viewer.scene.renderError.addEventListener((scene, error) => {
   }
 });
 
-// Skybox (star field) is available but hidden by default — camera feed is
-// visible through the transparent background. SET_SKYBOX toggles it on when
-// the camera preview is paused (WOE-077).
+// Skybox (star field) is shown by default. SET_SKYBOX toggles it.
 if (viewer.scene.skyBox) {
-  viewer.scene.skyBox.show = false;
+  viewer.scene.skyBox.show = true;
 }
-viewer.scene.backgroundColor = new Cesium.Color(0, 0, 0, 0);
+viewer.scene.backgroundColor = new Cesium.Color(0, 0, 0, 1);
 viewer.scene.highDynamicRange = false;           // HDR breaks alpha compositing
 viewer.scene.fog.enabled = false;
 viewer.scene.sun.show = false;
 viewer.scene.moon.show = false;
 
-// Globe translucency — baseColor alpha is unreliable in Cesium; use translucency API.
-viewer.scene.globe.translucency.enabled = true;
-viewer.scene.globe.translucency.frontFaceAlpha = 1.0;
+// Globe translucency disabled — it prevents the depth buffer from occluding
+// labels on the far side of the globe. frontFaceAlpha was 1.0 anyway (opaque).
 viewer.scene.globe.baseColor = new Cesium.Color(0.1, 0.1, 0.15, 1.0); // dark ocean fill
+viewer.scene.globe.depthTestAgainstTerrain = true;  // occlude labels on the far side
+
+// Anti-aliasing for smoother polylines and labels.
+viewer.scene.postProcessStages.fxaa.enabled = true;
+viewer.scene.msaaSamples = 4;
 
 // Initial camera: ISS orbital altitude (420 km = 420,000 m), looking straight down.
 viewer.camera.setView({
@@ -75,11 +77,14 @@ viewer.camera.setView({
   },
 });
 
-// ── Load vector layers from bundled GeoJSON assets ──────────────────────────
-loadVectorLayers(viewer, 8080).catch(e => console.warn('Vector layer load error:', e));
-
 // Raster layers — probes local tile server, falls back to online OSM.
 loadRasterLayers(viewer, 8765).catch(e => console.warn('Raster layer load error:', e));
+
+// Country borders + labels from bundled GeoJSON.
+loadBorders(viewer, 8080).catch(e => console.warn('Border layer load error:', e));
+
+// Water body labels (oceans, seas, lakes, rivers).
+loadWaterLabels(viewer, 8080).catch(e => console.warn('Water label load error:', e));
 
 // ── Flutter → CesiumJS bridge (TECH_SPEC §8.1) ───────────────────────────────
 // All messages arrive as `flutter_message` CustomEvents with
@@ -178,6 +183,18 @@ clickHandler.setInputAction((event) => {
     lon: Cesium.Math.toDegrees(carto.longitude),
   });
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+// ── FPS reporting (TECH_SPEC §8.2) ──────────────────────────────────────────
+// Measure actual render frame rate and report to Flutter every 5 seconds.
+let _frameCount = 0;
+viewer.scene.postRender.addEventListener(() => { _frameCount++; });
+setInterval(() => {
+  const fps = Math.round(_frameCount / 5);
+  _frameCount = 0;
+  if (window.flutter_inappwebview?.callHandler) {
+    window.flutter_inappwebview.callHandler('FRAME_RATE', { fps });
+  }
+}, 5000);
 
 // Notify Flutter that CesiumJS is fully initialized.
 // The 'flutterInAppWebViewPlatformReady' event fires once the Flutter

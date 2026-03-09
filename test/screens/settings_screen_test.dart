@@ -26,9 +26,6 @@ class _FakePositionSource implements PositionSource {
 
   @override
   Future<void> start() async {
-    // Emit on next microtask so PositionController._switchTo attaches the
-    // listener before the event fires (broadcast streams discard events with
-    // no listeners).
     scheduleMicrotask(() {
       if (!_controller.isClosed) {
         _controller.add(OrbitalPosition(
@@ -55,12 +52,14 @@ void main() {
     late _FakePositionSource fakeLive;
     late _FakePositionSource fakeTle;
     late _FakePositionSource fakeStatic;
+    late _FakePositionSource fakeGps;
 
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       fakeLive = _FakePositionSource(PositionSourceType.live);
       fakeTle = _FakePositionSource(PositionSourceType.estimated);
       fakeStatic = _FakePositionSource(PositionSourceType.static);
+      fakeGps = _FakePositionSource(PositionSourceType.gps);
     });
 
     Widget buildApp() {
@@ -69,6 +68,7 @@ void main() {
           livePositionSourceProvider.overrideWithValue(fakeLive),
           tlePositionSourceProvider.overrideWithValue(fakeTle),
           staticPositionSourceProvider.overrideWithValue(fakeStatic),
+          gpsPositionSourceProvider.overrideWithValue(fakeGps),
         ],
         child: MaterialApp(
           theme: buildThemeData(AppThemes.night),
@@ -77,60 +77,42 @@ void main() {
       );
     }
 
-    testWidgets('shows Position Source section with segmented button',
+    testWidgets('shows POSITION SOURCE with ISS, GPS, STATIC buttons',
         (tester) async {
       await tester.pumpWidget(buildApp());
       await tester.pumpAndSettle();
 
-      expect(find.text('Position Source'), findsOneWidget);
-      expect(find.text('Live ISS'), findsOneWidget);
-      expect(find.text('TLE'), findsOneWidget);
-      expect(find.text('Static'), findsOneWidget);
+      expect(find.text('POSITION SOURCE'), findsOneWidget);
+      expect(find.text('ISS'), findsOneWidget);
+      expect(find.text('GPS'), findsOneWidget);
+      expect(find.text('STATIC'), findsOneWidget);
+      // TLE is not shown — it's automatic
+      expect(find.text('TLE'), findsNothing);
     });
 
-    testWidgets('static fields hidden by default (Live selected)',
-        (tester) async {
+    testWidgets('tapping STATIC opens dialog', (tester) async {
       await tester.pumpWidget(buildApp());
       await tester.pumpAndSettle();
 
-      expect(find.text('Latitude'), findsNothing);
-      expect(find.text('Longitude'), findsNothing);
-      expect(find.text('Altitude'), findsNothing);
+      await tester.tap(find.text('STATIC'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('STATIC POSITION'), findsOneWidget);
+      expect(find.text('COORDINATES'), findsOneWidget);
+      expect(find.text('ADDRESS'), findsOneWidget);
     });
 
-    testWidgets('selecting Static shows coordinate fields', (tester) async {
+    testWidgets('static dialog can be dismissed with X', (tester) async {
       await tester.pumpWidget(buildApp());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Static'));
+      await tester.tap(find.text('STATIC'));
       await tester.pumpAndSettle();
+      expect(find.text('STATIC POSITION'), findsOneWidget);
 
-      expect(find.text('Latitude'), findsOneWidget);
-      expect(find.text('Longitude'), findsOneWidget);
-      expect(find.text('Altitude'), findsOneWidget);
-    });
-
-    testWidgets('selecting Live hides coordinate fields', (tester) async {
-      await tester.pumpWidget(buildApp());
+      await tester.tap(find.text('X'));
       await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Static'));
-      await tester.pumpAndSettle();
-      expect(find.text('Latitude'), findsOneWidget);
-
-      await tester.tap(find.text('Live ISS'));
-      await tester.pumpAndSettle();
-      expect(find.text('Latitude'), findsNothing);
-    });
-
-    testWidgets('TLE mode does not show coordinate fields', (tester) async {
-      await tester.pumpWidget(buildApp());
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('TLE'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Latitude'), findsNothing);
+      expect(find.text('STATIC POSITION'), findsNothing);
     });
   });
 }

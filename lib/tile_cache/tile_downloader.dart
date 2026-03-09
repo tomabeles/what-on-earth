@@ -39,7 +39,11 @@ class TileDownloader {
   final int concurrency;
 
   TileDownloader({Dio? dio, this.concurrency = 4})
-      : _dio = dio ?? Dio();
+      : _dio = dio ??
+            Dio(BaseOptions(headers: {
+              // OSM tile usage policy requires a descriptive User-Agent.
+              'User-Agent': 'WhatOnEarth/1.0 (tile prefetch)',
+            }));
 
   /// Enumerate all tile coordinates for a Web Mercator tileset across
   /// the given zoom range.

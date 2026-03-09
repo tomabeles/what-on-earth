@@ -2,6 +2,9 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
+/// Default HUD hue — classic fighter-jet phosphor green.
+const double kDefaultHudHue = 120.0;
+
 // ---------------------------------------------------------------------------
 // AppTokens — ThemeExtension carrying all design tokens (UI_SPEC §2)
 // ---------------------------------------------------------------------------
@@ -91,6 +94,35 @@ class AppTokens extends ThemeExtension<AppTokens> {
       hudFontFamily: hudFontFamily ?? this.hudFontFamily,
       hudFontSize: hudFontSize ?? this.hudFontSize,
       borderPrimary: borderPrimary ?? this.borderPrimary,
+    );
+  }
+
+  /// Generates a full token set from a single HUD hue (0–360).
+  factory AppTokens.fromHue(double hue) {
+    final primary = HSVColor.fromAHSV(1.0, hue % 360, 0.9, 1.0).toColor();
+    final secondary = HSVColor.fromAHSV(1.0, hue % 360, 0.35, 0.65).toColor();
+    final surface = HSVColor.fromAHSV(1.0, hue % 360, 0.4, 0.06).toColor();
+    final surfaceSec =
+        HSVColor.fromAHSV(1.0, hue % 360, 0.25, 0.10).toColor();
+    final border = HSVColor.fromAHSV(1.0, hue % 360, 0.35, 0.18).toColor();
+
+    return AppTokens(
+      surfacePrimary: surface,
+      surfaceSecondary: surfaceSec,
+      surfaceOverlay: surface.withValues(alpha: 0.7),
+      hudPrimary: primary,
+      hudSecondary: secondary,
+      hudWarning: const Color(0xFFFFB340),
+      hudDanger: const Color(0xFFFF3B30),
+      hudBackground: const Color(0x99000000),
+      fabBackground: primary,
+      fabIcon: surface,
+      statusLive: const Color(0xFF34C759),
+      statusEstimated: const Color(0xFFFFB340),
+      statusOffline: const Color(0xFF8E8E93),
+      hudFontFamily: 'JetBrainsMono',
+      hudFontSize: 11.0,
+      borderPrimary: border,
     );
   }
 

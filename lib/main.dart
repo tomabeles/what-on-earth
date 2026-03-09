@@ -25,7 +25,7 @@ void main() async {
   // Kick off base tile download in the background. Tiles accumulate on disk
   // and will be served on subsequent app launches (or within this session once
   // the download reaches the root tile that the health probe checks).
-  _downloadBaseTiles(docsDir.path);
+  _downloadTileLayers(docsDir.path);
 
   runApp(
     const ProviderScope(
@@ -34,26 +34,62 @@ void main() async {
   );
 }
 
-void _downloadBaseTiles(String documentsPath) {
+void _downloadTileLayers(String documentsPath) {
   final downloader = TileDownloader();
+
+  // Satellite imagery (ESRI World Imagery) — primary base layer.
+  // Note: ESRI uses {z}/{y}/{x} order in the URL (Y before X).
   downloader
       .downloadLayer(
-        layerId: 'base',
-        sourceUrlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        layerId: 'satellite',
+        sourceUrlTemplate:
+            'https://server.arcgisonline.com/ArcGIS/rest/services/'
+            'World_Imagery/MapServer/tile/{z}/{y}/{x}',
         documentsPath: documentsPath,
         minZoom: 0,
-        maxZoom: 5,
+        maxZoom: 6,
+        ext: 'jpg',
       )
       .listen(
-        (progress) {
-          if (progress.completedTiles % 100 == 0 ||
-              progress.completedTiles == progress.totalTiles) {
-            debugPrint(
-              'TileDownload: ${progress.completedTiles}/${progress.totalTiles}'
-              ' (${(progress.fraction * 100).toStringAsFixed(1)}%)',
-            );
+        (p) {
+          if (p.completedTiles % 100 == 0 ||
+              p.completedTiles == p.totalTiles) {
+            debugPrint('TileDownload [satellite]: '
+                '${p.completedTiles}/${p.totalTiles} '
+                '(${(p.fraction * 100).toStringAsFixed(1)}%)');
           }
         },
-        onError: (Object e) => debugPrint('TileDownload error: $e'),
+        onError: (Object e) => debugPrint('TileDownload [satellite] error: $e'),
+        onDone: () {
+          // After satellite tiles finish, download night lights.
+          _downloadNightLights(downloader, documentsPath);
+        },
+      );
+}
+
+void _downloadNightLights(TileDownloader downloader, String documentsPath) {
+  // NASA VIIRS Black Marble (2016 composite) — city lights at night.
+  downloader
+      .downloadLayer(
+        layerId: 'nightlights',
+        sourceUrlTemplate:
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/'
+            'VIIRS_Black_Marble/default/2016-01-01/'
+            'GoogleMapsCompatible_Level8/{z}/{y}/{x}.png',
+        documentsPath: documentsPath,
+        minZoom: 0,
+        maxZoom: 6,
+      )
+      .listen(
+        (p) {
+          if (p.completedTiles % 100 == 0 ||
+              p.completedTiles == p.totalTiles) {
+            debugPrint('TileDownload [nightlights]: '
+                '${p.completedTiles}/${p.totalTiles} '
+                '(${(p.fraction * 100).toStringAsFixed(1)}%)');
+          }
+        },
+        onError: (Object e) =>
+            debugPrint('TileDownload [nightlights] error: $e'),
       );
 }

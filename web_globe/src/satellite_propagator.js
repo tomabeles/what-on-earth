@@ -103,11 +103,38 @@ export function propagateNow() {
   const gmst = satellite.gstime(now);
   const geo = satellite.eciToGeodetic(posVel.position, gmst);
 
+  // Compute velocity magnitude from ECI velocity vector (km/s).
+  const vel = posVel.velocity;
+  const velocityKmS = vel
+    ? Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z)
+    : undefined;
+
+  const lat1 = satellite.degreesLat(geo.latitude);
+  const lon1 = satellite.degreesLong(geo.longitude);
+
+  // Compute bearing by propagating 1 second ahead.
+  let bearingDeg;
+  const future = new Date(now.getTime() + 1000);
+  const pv2 = satellite.propagate(_satrec, future);
+  if (pv2 && pv2.position && pv2.position !== false) {
+    const gmst2 = satellite.gstime(future);
+    const geo2 = satellite.eciToGeodetic(pv2.position, gmst2);
+    const lat2 = geo2.latitude;
+    const lon2 = geo2.longitude;
+    const dLon = lon2 - geo.longitude;
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(geo.latitude) * Math.sin(lat2) -
+              Math.sin(geo.latitude) * Math.cos(lat2) * Math.cos(dLon);
+    bearingDeg = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+  }
+
   return {
-    lat: satellite.degreesLat(geo.latitude),
-    lon: satellite.degreesLong(geo.longitude),
+    lat: lat1,
+    lon: lon1,
     altKm: geo.height, // satellite.js already returns km
     ts: now.getTime(), // ms since epoch — matches OrbitalPosition.fromJson 'ts' key
     source: 'estimated',
+    velocityKmS,
+    bearingDeg,
   };
 }

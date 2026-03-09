@@ -4,54 +4,39 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:what_on_earth/shared/layer_control_panel.dart';
 
 void main() {
-  group('Camera toggle via layerVisibilityProvider (WOE-077)', () {
+  group('Stars toggle via layerVisibilityProvider', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('camera defaults to ON on cold launch', () {
+    test('stars defaults to ON', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
       final visibility = container.read(layerVisibilityProvider);
-      expect(visibility['camera'], isTrue);
+      expect(visibility['stars'], isTrue);
     });
 
-    test('toggling camera flips its state', () async {
+    test('toggling stars flips its state', () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      expect(container.read(layerVisibilityProvider)['camera'], isTrue);
+      expect(container.read(layerVisibilityProvider)['stars'], isTrue);
 
-      await container.read(layerVisibilityProvider.notifier).toggle('camera');
-      expect(container.read(layerVisibilityProvider)['camera'], isFalse);
+      await container.read(layerVisibilityProvider.notifier).toggle('stars');
+      expect(container.read(layerVisibilityProvider)['stars'], isFalse);
 
-      await container.read(layerVisibilityProvider.notifier).toggle('camera');
-      expect(container.read(layerVisibilityProvider)['camera'], isTrue);
+      await container.read(layerVisibilityProvider.notifier).toggle('stars');
+      expect(container.read(layerVisibilityProvider)['stars'], isTrue);
     });
 
-    test('camera state is NOT persisted to SharedPreferences', () async {
+    test('stars state is persisted to SharedPreferences', () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      await container.read(layerVisibilityProvider.notifier).toggle('camera');
+      await container.read(layerVisibilityProvider.notifier).toggle('stars');
       final prefs = await SharedPreferences.getInstance();
-      // Camera should NOT be persisted (always ON on cold launch)
-      expect(prefs.getBool('layer_visible_camera'), isNull);
-    });
-
-    test('non-camera layer toggle IS persisted', () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-
-      // Rivers default to OFF
-      expect(container.read(layerVisibilityProvider)['rivers'], isFalse);
-
-      await container.read(layerVisibilityProvider.notifier).toggle('rivers');
-      expect(container.read(layerVisibilityProvider)['rivers'], isTrue);
-
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('layer_visible_rivers'), isTrue);
+      expect(prefs.getBool('layer_visible_stars'), isFalse);
     });
   });
 }

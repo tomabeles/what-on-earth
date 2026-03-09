@@ -25,6 +25,8 @@ curl -fSL "$BASE_URL/ne_10m_admin_0_countries.geojson" -o "$TEMP_DIR/countries.g
 curl -fSL "$BASE_URL/ne_10m_coastline.geojson" -o "$TEMP_DIR/coastline.geojson"
 curl -fSL "$BASE_URL/ne_10m_lakes.geojson" -o "$TEMP_DIR/lakes.geojson"
 curl -fSL "$BASE_URL/ne_10m_populated_places.geojson" -o "$TEMP_DIR/places.geojson"
+curl -fSL "$BASE_URL/ne_10m_geography_marine_polys.geojson" -o "$TEMP_DIR/marine.geojson"
+curl -fSL "$BASE_URL/ne_10m_rivers_lake_centerlines.geojson" -o "$TEMP_DIR/rivers.geojson"
 
 echo "==> Simplifying and reducing precision..."
 
@@ -51,6 +53,21 @@ mapshaper "$TEMP_DIR/places.geojson" \
   -filter 'POP_MAX > 100000' \
   -filter-fields NAME,POP_MAX \
   -o "$OUTPUT_DIR/ne_10m_populated_places.geojson" precision=0.01 format=geojson
+
+# Marine polys (oceans, seas): simplify to 10%, keep name and scalerank
+mapshaper "$TEMP_DIR/marine.geojson" \
+  -simplify 10% \
+  -filter-fields name,scalerank \
+  -rename-fields NAME=name \
+  -o "$OUTPUT_DIR/ne_10m_geography_marine_polys.geojson" precision=0.01 format=geojson
+
+# Rivers: simplify to 10%, keep name and scalerank, filter to major rivers (scalerank <= 4)
+mapshaper "$TEMP_DIR/rivers.geojson" \
+  -simplify 10% \
+  -filter 'scalerank <= 4' \
+  -filter-fields name,scalerank \
+  -rename-fields NAME=name \
+  -o "$OUTPUT_DIR/ne_10m_rivers.geojson" precision=0.01 format=geojson
 
 echo "==> Output files:"
 ls -lh "$OUTPUT_DIR"/*.geojson
