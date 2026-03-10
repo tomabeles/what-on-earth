@@ -40,7 +40,8 @@ enum InboundMessage {
   mapTap,
   passCalcResult,
   frameRate,
-  positionUpdate;
+  positionUpdate,
+  reticleLabel;
 
   /// The handler name registered with [InAppWebViewController.addJavaScriptHandler].
   String get handlerName => switch (this) {
@@ -49,6 +50,7 @@ enum InboundMessage {
         InboundMessage.passCalcResult => 'PASS_CALC_RESULT',
         InboundMessage.frameRate => 'FRAME_RATE',
         InboundMessage.positionUpdate => 'POSITION_UPDATE',
+        InboundMessage.reticleLabel => 'RETICLE_LABEL',
       };
 }
 
@@ -78,6 +80,9 @@ class BridgeController {
   /// FPS value reported by CesiumJS via `FRAME_RATE` messages.
   /// AR screen listens to this and forwards to [fpsProvider].
   final fpsNotifier = ValueNotifier<int?>(null);
+
+  /// Label for the geographic feature at the reticle (screen center).
+  final reticleLabelNotifier = ValueNotifier<String>('');
   
   /// Globe tap events from MAP_TAP messages.
   Stream<MapTapEvent> get mapTaps => _mapTaps.stream;
@@ -112,6 +117,10 @@ class BridgeController {
     controller.addJavaScriptHandler(
       handlerName: InboundMessage.positionUpdate.handlerName,
       callback: _onPositionUpdate,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: InboundMessage.reticleLabel.handlerName,
+      callback: _onReticleLabel,
     );
   }
 
@@ -174,6 +183,7 @@ class BridgeController {
     _passCalcResults.close();
     _propagatedPositions.close();
     fpsNotifier.dispose();
+    reticleLabelNotifier.dispose();
   }
 
   // ── Inbound handlers ──────────────────────────────────────────────────────
@@ -228,6 +238,13 @@ class BridgeController {
       if (!_propagatedPositions.isClosed) _propagatedPositions.add(pos);
     } catch (e) {
       debugPrint('BridgeController: POSITION_UPDATE parse error: $e');
+    }
+  }
+
+  void _onReticleLabel(List<dynamic> args) {
+    final raw = args.firstOrNull;
+    if (raw is Map) {
+      reticleLabelNotifier.value = (raw['label'] as String?) ?? '';
     }
   }
 }

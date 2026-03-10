@@ -63,23 +63,26 @@ class _HudCommandPanelState extends State<HudCommandPanel> {
           top: 0,
           bottom: 0,
           child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _HudCommandButton(
-                  label: 'CTRL>',
-                  isActive: _active == HudCommand.ctrl,
-                  tokens: tokens,
-                  onTap: () => _toggle(HudCommand.ctrl),
-                ),
-                const SizedBox(height: 8),
-                _HudCommandButton(
-                  label: 'SET>',
-                  isActive: _active == HudCommand.settings,
-                  tokens: tokens,
-                  onTap: () => _toggle(HudCommand.settings),
-                ),
-              ],
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HudCommandButton(
+                    label: 'CTRL>',
+                    isActive: _active == HudCommand.ctrl,
+                    tokens: tokens,
+                    onTap: () => _toggle(HudCommand.ctrl),
+                  ),
+                  const SizedBox(height: 8),
+                  _HudCommandButton(
+                    label: 'SET>',
+                    isActive: _active == HudCommand.settings,
+                    tokens: tokens,
+                    onTap: () => _toggle(HudCommand.settings),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -122,6 +125,7 @@ class _HudCommandButton extends StatelessWidget {
               : Colors.transparent,
           border: Border.all(color: const Color(0xBFC0C0C0), width: 1),
         ),
+        alignment: Alignment.center,
         child: Text(
           label,
           style: TextStyle(

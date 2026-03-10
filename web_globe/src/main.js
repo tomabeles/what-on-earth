@@ -8,6 +8,7 @@ import { initTLE, propagateNow } from './satellite_propagator.js';
 import { loadBorders, loadWaterLabels, loadRasterLayers, layersRegistry } from './layers.js';
 import { syncPins } from './pins.js';
 import { calculateNextPass } from './satellite_propagator.js';
+import { buildIndex, startLabelLoop } from './reticle_label.js';
 
 // Active SGP4 propagation interval handle; cleared on each new SET_TLE.
 let _propagationInterval = null;
@@ -81,10 +82,18 @@ viewer.camera.setView({
 loadRasterLayers(viewer, 8765).catch(e => console.warn('Raster layer load error:', e));
 
 // Country borders + labels from bundled GeoJSON.
-loadBorders(viewer, 8080).catch(e => console.warn('Border layer load error:', e));
+const bordersPromise = loadBorders(viewer, 8080).catch(e => console.warn('Border layer load error:', e));
 
 // Water body labels (oceans, seas, lakes, rivers).
-loadWaterLabels(viewer, 8080).catch(e => console.warn('Water label load error:', e));
+const waterPromise = loadWaterLabels(viewer, 8080).catch(e => console.warn('Water label load error:', e));
+
+// Build reticle label spatial index after geographic layers finish loading,
+// then start the throttled label update loop.
+Promise.all([bordersPromise, waterPromise]).then(() => {
+  buildIndex(layersRegistry, 8080).then(() => {
+    startLabelLoop(viewer, 500);
+  });
+});
 
 // ── Flutter → CesiumJS bridge (TECH_SPEC §8.1) ───────────────────────────────
 // All messages arrive as `flutter_message` CustomEvents with

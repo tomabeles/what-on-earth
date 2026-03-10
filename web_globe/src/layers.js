@@ -445,7 +445,7 @@ export async function loadRasterLayers(viewer, tileServerPort = 8765) {
   const baseProvider = new Cesium.UrlTemplateImageryProvider({
     url: baseUrl,
     minimumLevel: 0,
-    maximumLevel: localAvailable ? 6 : 6,
+    maximumLevel: localAvailable ? 7 : 7,
     tilingScheme: new Cesium.WebMercatorTilingScheme(),
     credit: localAvailable ? 'Esri World Imagery' : 'OpenStreetMap contributors',
   });
@@ -461,7 +461,7 @@ export async function loadRasterLayers(viewer, tileServerPort = 8765) {
     const nightProvider = new Cesium.UrlTemplateImageryProvider({
       url: `http://localhost:${tileServerPort}/tiles/nightlights/{z}/{x}/{y}.png`,
       minimumLevel: 0,
-      maximumLevel: 5,
+      maximumLevel: 7,
       tilingScheme: new Cesium.WebMercatorTilingScheme(),
       credit: 'NASA VIIRS Black Marble',
     });
@@ -469,5 +469,35 @@ export async function loadRasterLayers(viewer, tileServerPort = 8765) {
     nightLayer.show = false;
     layersRegistry['nightlights'] = nightLayer;
     console.log('Night lights layer available (hidden by default)');
+  }
+
+  // ── Dark Matter layer: CartoDB dark-themed map (local only) ─────────
+  if (localAvailable) {
+    const darkProvider = new Cesium.UrlTemplateImageryProvider({
+      url: `http://localhost:${tileServerPort}/tiles/darkmatter/{z}/{x}/{y}.png`,
+      minimumLevel: 0,
+      maximumLevel: 7,
+      tilingScheme: new Cesium.WebMercatorTilingScheme(),
+      credit: 'CartoDB Dark Matter',
+    });
+    const darkLayer = viewer.imageryLayers.addImageryProvider(darkProvider);
+    darkLayer.show = false;
+    layersRegistry['darkmatter'] = darkLayer;
+    console.log('Dark Matter layer available (hidden by default)');
+  }
+
+  // ── Blue Marble layer: NASA Blue Marble Next Generation (local only) ─
+  if (localAvailable) {
+    const bmProvider = new Cesium.UrlTemplateImageryProvider({
+      url: `http://localhost:${tileServerPort}/tiles/bluemarble/{z}/{x}/{y}.jpeg`,
+      minimumLevel: 0,
+      maximumLevel: 7,
+      tilingScheme: new Cesium.WebMercatorTilingScheme(),
+      credit: 'NASA Blue Marble',
+    });
+    const bmLayer = viewer.imageryLayers.addImageryProvider(bmProvider);
+    bmLayer.show = false;
+    layersRegistry['bluemarble'] = bmLayer;
+    console.log('Blue Marble layer available (hidden by default)');
   }
 }

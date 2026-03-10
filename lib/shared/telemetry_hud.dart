@@ -26,6 +26,7 @@ class HudData {
     this.sourceType,
     this.ageSeconds,
     this.fps,
+    this.reticleLabel,
   });
 
   final double? latDeg;
@@ -39,6 +40,7 @@ class HudData {
   final PositionSourceType? sourceType;
   final int? ageSeconds;
   final int? fps;
+  final String? reticleLabel;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +103,7 @@ class TelemetryHud extends ConsumerWidget {
         data: data,
         fps: fps,
         topPadding: padding.top,
+        reticleLabel: data.reticleLabel ?? '',
       ),
       size: Size.infinite,
     );
@@ -121,6 +124,7 @@ class HudPainter extends CustomPainter {
     required this.data,
     required this.fps,
     this.topPadding = 0,
+    this.reticleLabel = '',
   });
 
   final AppTokens tokens;
@@ -130,12 +134,14 @@ class HudPainter extends CustomPainter {
   final HudData data;
   final int? fps;
   final double topPadding;
+  final String reticleLabel;
 
   Color get hudColor => tokens.hudPrimary;
 
   @override
   void paint(Canvas canvas, Size size) {
     _paintReticle(canvas, size);
+    _paintReticleLabel(canvas, size);
     _paintHeadingTape(canvas, size);
     _paintPitchLadder(canvas, size);
     _paintRollIndicator(canvas, size);
@@ -162,6 +168,26 @@ class HudPainter extends CustomPainter {
         center.translate(-gap, 0), center.translate(-gap - arm, 0), paint);
     canvas.drawLine(
         center.translate(gap, 0), center.translate(gap + arm, 0), paint);
+  }
+
+  // ── Reticle Label ────────────────────────────────────────────────────────
+
+  void _paintReticleLabel(Canvas canvas, Size size) {
+    if (reticleLabel.isEmpty) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    // Position label below the reticle crosshair (gap + arm = 14px, plus margin)
+    final labelY = center.dy + 22;
+
+    _drawText(
+      canvas,
+      reticleLabel.toUpperCase(),
+      Offset(center.dx, labelY),
+      tokens.hudFontFamily,
+      tokens.hudFontSize - 1,
+      hudColor.withValues(alpha: 0.8),
+      align: TextAlign.center,
+    );
   }
 
   // ── Heading Tape (WOE-071) ───────────────────────────────────────────────
@@ -459,13 +485,13 @@ class HudPainter extends CustomPainter {
     _drawLabelValue(
         canvas, 'HDG', data.headingDeg != null ? '${data.headingDeg!.round()}°' : '--', leftX, y);
 
-    // Right column background (3 rows: VEL, TRK, SRC)
-    final rightRect3 = Rect.fromLTWH(size.width - margin - colWidth, bottomY,
-        colWidth, 3 * rowHeight + 2 * padding);
-    canvas.drawRect(rightRect3,
+    // Right column background (4 rows: VEL, TRK, PTCH, SRC)
+    final rightRect = Rect.fromLTWH(size.width - margin - colWidth, bottomY,
+        colWidth, 4 * rowHeight + 2 * padding);
+    canvas.drawRect(rightRect,
         Paint()..color = tokens.hudBackground.withValues(alpha: 0.3));
     canvas.drawRect(
-        rightRect3,
+        rightRect,
         Paint()
           ..color = const Color(0xBFC0C0C0)
           ..style = PaintingStyle.stroke
@@ -485,6 +511,12 @@ class HudPainter extends CustomPainter {
         ? '${data.bearingDeg!.round()}°'
         : '--';
     _drawLabelValue(canvas, 'TRK', trkText, rightX, y);
+    y += rowHeight;
+
+    final ptchText = data.pitchDeg != null
+        ? '${data.pitchDeg!.round()}°'
+        : '--';
+    _drawLabelValue(canvas, 'PTCH', ptchText, rightX, y);
     y += rowHeight;
 
     // SRC with connectivity dot (bottom of right column)

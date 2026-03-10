@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,9 @@ import '../globe/globe_view.dart';
 import '../position/position_controller.dart';
 import '../position/position_source.dart';
 import '../sensors/device_orientation.dart' as sensor;
+import '../sensors/horizon_detector.dart';
+import '../sensors/lvlh_frame.dart';
+import '../sensors/orientation_corrections.dart';
 import '../sensors/sensor_fusion_provider.dart';
 import '../shared/hud_command_panel.dart';
 import '../shared/layer_control_panel.dart';
@@ -34,8 +38,12 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
   StreamSubscription<OrbitalPosition>? _positionSub;
   StreamSubscription<sensor.DeviceOrientation>? _orientationSub;
+  StreamSubscription<HorizonCorrection>? _horizonSub;
   OrbitalPosition? _lastPosition;
   sensor.DeviceOrientation? _lastOrientation;
+
+  CameraController? _cameraController;
+  HorizonDetectorEngine? _horizonDetector;
 
   @override
   void initState() {
@@ -44,24 +52,74 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startPosition();
     _startOrientation();
+    _startHorizonDetector();
     _listenLayerToggles();
     _bridge.fpsNotifier.addListener(_onFpsChanged);
+    _bridge.reticleLabelNotifier.addListener(_onReticleLabelChanged);
   }
 
   void _onFpsChanged() {
     ref.read(fpsProvider.notifier).set(_bridge.fpsNotifier.value);
   }
 
+  void _onReticleLabelChanged() {
+    _updateHud();
+  }
+
   Future<void> _startPosition() async {
     await _bridge.globeReady;
     if (!mounted) return;
 
+    final engine = ref.read(sensorFusionEngineProvider);
     final notifier = ref.read(positionControllerProvider.notifier);
     _positionSub = notifier.positionStream.listen((pos) {
       _bridge.send(OutboundMessage.updatePosition, pos.toJson());
       _lastPosition = pos;
+
+      // Compute LVLH frame and feed to sensor fusion engine
+      final lvlh = computeLvlhFrame(pos);
+      engine.updateLvlhFrame(lvlh);
+
       _updateHud();
     });
+  }
+
+  Future<void> _startHorizonDetector() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+
+      // Prefer the back camera for horizon detection
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        camera,
+        ResolutionPreset.low, // Low res is fine for edge detection
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
+
+      await _cameraController!.initialize();
+      if (!mounted) {
+        await _cameraController?.dispose();
+        _cameraController = null;
+        return;
+      }
+
+      _horizonDetector = HorizonDetectorEngine();
+      final engine = ref.read(sensorFusionEngineProvider);
+
+      _horizonSub = _horizonDetector!.correctionStream.listen((correction) {
+        engine.updateHorizonCorrection(correction);
+      });
+
+      _horizonDetector!.start(_cameraController!);
+    } catch (e) {
+      debugPrint('Horizon detector init failed: $e');
+    }
   }
 
   Future<void> _startOrientation() async {
@@ -95,6 +153,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
       ageSeconds: pos != null
           ? DateTime.now().difference(pos.timestamp).inSeconds
           : null,
+      reticleLabel: _bridge.reticleLabelNotifier.value,
     ));
   }
 
@@ -118,8 +177,15 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   @override
   void dispose() {
     _bridge.fpsNotifier.removeListener(_onFpsChanged);
+    _bridge.reticleLabelNotifier.removeListener(_onReticleLabelChanged);
     _positionSub?.cancel();
     _orientationSub?.cancel();
+    _horizonSub?.cancel();
+    if (_cameraController != null && _horizonDetector != null) {
+      _horizonDetector!.stop(_cameraController!);
+    }
+    _horizonDetector?.dispose();
+    _cameraController?.dispose();
     WakelockPlus.disable();
     _bridge.dispose();
     super.dispose();

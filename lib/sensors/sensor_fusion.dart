@@ -5,6 +5,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 
 import 'calibration.dart';
 import 'device_orientation.dart';
+import 'orientation_corrections.dart';
 
 // Re-export DeviceOrientation so existing imports of sensor_fusion.dart
 // continue to resolve the type.
@@ -39,6 +40,13 @@ typedef OrientationSample = DeviceOrientation;
 /// Complementary filter coefficient. 0.98 = trust gyro 98% for short-term,
 /// accelerometer/magnetometer 2% for long-term drift correction.
 const double kFilterAlpha = 0.98;
+
+/// Higher alpha for orbit mode without camera correction — almost pure gyro
+/// integration, since the accelerometer reads near-zero in microgravity.
+const double kOrbitGyroOnlyAlpha = 0.995;
+
+/// Minimum horizon correction confidence to use for orientation reference.
+const double kMinHorizonConfidence = 0.3;
 
 const double _rad2deg = 180.0 / math.pi;
 const double _deg2rad = math.pi / 180.0;
@@ -100,6 +108,10 @@ RawSensorSample applyHardIronCorrection(
 ///
 /// [prev] may be null for the first sample (uses accel/mag reference directly).
 /// [dt] is the time delta in seconds since the previous sample.
+///
+/// In orbit mode, the accelerometer reads near-zero. Optional corrections:
+/// - [horizonCorrection]: camera-derived pitch/roll reference (replaces accel).
+/// - [lvlhFrame]: LVLH nadir reference from orbital telemetry.
 DeviceOrientation applyFilter({
   required DeviceOrientation? prev,
   required RawSensorSample accel,
@@ -108,17 +120,42 @@ DeviceOrientation applyFilter({
   required double dt,
   required DateTime timestamp,
   double alpha = kFilterAlpha,
+  HorizonCorrection? horizonCorrection,
+  LvlhFrame? lvlhFrame,
 }) {
-  // --- Reference orientation from accelerometer + magnetometer ---
-  final (refPitchRad, refRollRad) = accelPitchRoll(accel);
-  final refHeadingRad = tiltCompensatedHeading(mag, refPitchRad, refRollRad);
+  // --- Reference pitch/roll ---
+  double refPitchDeg;
+  double refRollDeg;
 
-  final refPitchDeg = refPitchRad * _rad2deg;
-  final refRollDeg = refRollRad * _rad2deg;
+  final bool hasHorizon = horizonCorrection != null &&
+      horizonCorrection.isFresh(timestamp) &&
+      horizonCorrection.confidence >= kMinHorizonConfidence;
+  final bool hasLvlh =
+      lvlhFrame != null && lvlhFrame.isFresh(timestamp) && lvlhFrame.isOrbital;
+
+  if (hasHorizon) {
+    // Camera-derived correction (highest priority in orbit)
+    refPitchDeg = horizonCorrection.pitchDeg;
+    refRollDeg = horizonCorrection.rollDeg;
+  } else if (hasLvlh) {
+    // LVLH nadir reference — assumes nadir-pointing attitude
+    refPitchDeg = lvlhFrame.referencePitchDeg;
+    refRollDeg = lvlhFrame.referenceRollDeg;
+  } else {
+    // Ground mode: accelerometer reference
+    final (refPitchRad, refRollRad) = accelPitchRoll(accel);
+    refPitchDeg = refPitchRad * _rad2deg;
+    refRollDeg = refRollRad * _rad2deg;
+  }
+
+  // --- Reference heading (magnetometer) ---
+  // Compute heading from mag regardless; on ground accel pitch/roll help,
+  // in orbit we still use mag as a heading reference (backup).
+  final (accelPitchRad, accelRollRad) = accelPitchRoll(accel);
+  final refHeadingRad = tiltCompensatedHeading(mag, accelPitchRad, accelRollRad);
   final refHeadingDeg = refHeadingRad * _rad2deg;
 
   if (prev == null || dt <= 0) {
-    // First sample — use accelerometer/magnetometer reference directly
     return DeviceOrientation(
       headingDeg: _wrapHeading(refHeadingDeg),
       pitchDeg: _clampPitch(refPitchDeg),
@@ -129,15 +166,13 @@ DeviceOrientation applyFilter({
   }
 
   // --- Gyroscope integration (short-term) ---
-  // sensors_plus gyro is in rad/s; integrate over dt.
-  // Device axes: x = pitch rate, y = roll rate, z = yaw rate
   final gyroPitchDelta = gyro.x * _rad2deg * dt;
   final gyroRollDelta = gyro.y * _rad2deg * dt;
   final gyroYawDelta = gyro.z * _rad2deg * dt;
 
   final gyroPitch = prev.pitchDeg + gyroPitchDelta;
   final gyroRoll = prev.rollDeg + gyroRollDelta;
-  final gyroHeading = prev.headingDeg - gyroYawDelta; // yaw: negative for CW
+  final gyroHeading = prev.headingDeg - gyroYawDelta;
 
   // --- Complementary filter blend ---
   final fusedPitch = alpha * gyroPitch + (1 - alpha) * refPitchDeg;
@@ -226,6 +261,16 @@ class SensorFusionEngine {
   /// [updateCalibration] without restarting the engine.
   CalibrationParams? _calibration;
 
+  /// Latest camera-derived horizon correction (orbit mode).
+  HorizonCorrection? _horizonCorrection;
+
+  /// Latest LVLH frame from orbital telemetry.
+  LvlhFrame? _lvlhFrame;
+
+  /// Whether the engine operates in orbit mode (microgravity).
+  /// Auto-detected from LVLH altitude or set manually.
+  bool _orbitMode = false;
+
   bool _running = false;
   bool _interferenceDetected = false;
   int _stableCount = 0;
@@ -286,6 +331,27 @@ class SensorFusionEngine {
     _calibration = params;
   }
 
+  /// Update the camera-derived horizon correction. Called by the
+  /// [HorizonDetectorEngine] at ~2 Hz when a circle is detected.
+  void updateHorizonCorrection(HorizonCorrection correction) {
+    _horizonCorrection = correction;
+  }
+
+  /// Update the LVLH reference frame from orbital telemetry.
+  /// Also auto-detects orbit mode from altitude.
+  void updateLvlhFrame(LvlhFrame frame) {
+    _lvlhFrame = frame;
+    _orbitMode = frame.isOrbital;
+  }
+
+  /// Manually enable/disable orbit mode.
+  void setOrbitMode(bool enabled) {
+    _orbitMode = enabled;
+  }
+
+  /// Whether the engine is currently in orbit mode.
+  bool get orbitMode => _orbitMode;
+
   void _onGyro(GyroscopeEvent event) {
     final accel = _lastAccel;
     var mag = _lastMag;
@@ -310,6 +376,23 @@ class SensorFusionEngine {
       timestamp: now,
     );
 
+    // Determine alpha and corrections based on orbit mode
+    var alpha = kFilterAlpha;
+    HorizonCorrection? horizonRef;
+    LvlhFrame? lvlhRef;
+
+    if (_orbitMode) {
+      final hc = _horizonCorrection;
+      if (hc != null && hc.isFresh(now) && hc.confidence >= kMinHorizonConfidence) {
+        // Camera correction available — use normal alpha
+        horizonRef = hc;
+      } else {
+        // No camera correction in orbit — trust gyro more
+        alpha = kOrbitGyroOnlyAlpha;
+      }
+      lvlhRef = _lvlhFrame;
+    }
+
     final sample = applyFilter(
       prev: _lastOrientation,
       accel: accel,
@@ -317,6 +400,9 @@ class SensorFusionEngine {
       gyro: gyro,
       dt: dt,
       timestamp: now,
+      alpha: alpha,
+      horizonCorrection: horizonRef,
+      lvlhFrame: lvlhRef,
     );
 
     // Interference detection: check heading delta (WOE-021)
@@ -365,6 +451,9 @@ class SensorFusionEngine {
     _lastMag = null;
     _lastOrientation = null;
     _lastGyroTimestamp = null;
+    _horizonCorrection = null;
+    _lvlhFrame = null;
+    _orbitMode = false;
     _interferenceDetected = false;
     _stableCount = 0;
   }
