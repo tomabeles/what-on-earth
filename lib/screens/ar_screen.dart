@@ -117,6 +117,9 @@ class _ARScreenState extends ConsumerState<ARScreen> {
       });
 
       _horizonDetector!.start(_cameraController!);
+
+      // Trigger rebuild so the camera preview appears in the stack
+      if (mounted) setState(() {});
     } catch (e) {
       debugPrint('Horizon detector init failed: $e');
     }
@@ -197,8 +200,17 @@ class _ARScreenState extends ConsumerState<ARScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Layer 1+2: Globe WebView (camera + CesiumJS)
+          // Layer 1: Globe WebView (CesiumJS)
           GlobeView(bridge: _bridge),
+          // Layer 2: Camera preview at 25% opacity (for horizon calibration)
+          if (_cameraController != null &&
+              _cameraController!.value.isInitialized)
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.25,
+                child: CameraPreview(_cameraController!),
+              ),
+            ),
           // Layer 3: Telemetry HUD
           const Positioned.fill(child: TelemetryHud()),
           // Layer 4: UI Chrome
