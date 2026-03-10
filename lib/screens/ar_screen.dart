@@ -15,6 +15,7 @@ import '../sensors/horizon_detector.dart';
 import '../sensors/lvlh_frame.dart';
 import '../sensors/orientation_corrections.dart';
 import '../sensors/sensor_fusion_provider.dart';
+import '../shared/horizon_debug_overlay.dart';
 import '../shared/hud_command_panel.dart';
 import '../shared/layer_control_panel.dart';
 import '../shared/telemetry_hud.dart';
@@ -211,7 +212,14 @@ class _ARScreenState extends ConsumerState<ARScreen> {
                 child: CameraPreview(_cameraController!),
               ),
             ),
-          // Layer 3: Telemetry HUD
+          // Layer 3: Horizon detection debug overlay
+          if (_horizonDetector != null)
+            Positioned.fill(
+              child: HorizonDebugOverlay(
+                debugNotifier: _horizonDetector!.debugNotifier,
+              ),
+            ),
+          // Layer 4: Telemetry HUD
           const Positioned.fill(child: TelemetryHud()),
           // Layer 4: UI Chrome
           // HUD command panel (CTRL>, SET> buttons + modal overlays)

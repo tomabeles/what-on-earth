@@ -55,6 +55,28 @@ class DetectedCircle {
       'r=${radius.toStringAsFixed(1)}, inliers=$inlierCount/${(inlierCount / inlierRatio).round()})';
 }
 
+/// Debug snapshot from a single frame processing pass.
+class HorizonDebugInfo {
+  /// Number of edge points found after Sobel thresholding.
+  final int edgePointCount;
+
+  /// The detected circle, if any.
+  final DetectedCircle? circle;
+
+  /// The resulting correction, if any.
+  final HorizonCorrection? correction;
+
+  /// Processing timestamp.
+  final DateTime timestamp;
+
+  const HorizonDebugInfo({
+    required this.edgePointCount,
+    required this.circle,
+    required this.correction,
+    required this.timestamp,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline: CameraImage → HorizonCorrection
 // ---------------------------------------------------------------------------
@@ -340,6 +362,10 @@ class HorizonDetectorEngine {
   /// Most recent correction (may be null if none detected yet).
   HorizonCorrection? lastCorrection;
 
+  /// Debug info from the most recent frame processing pass.
+  /// Listen to this notifier to draw visual debug overlays.
+  final debugNotifier = ValueNotifier<HorizonDebugInfo?>(null);
+
   /// Whether the engine is actively processing frames.
   bool get isRunning => _running;
 
@@ -360,12 +386,15 @@ class HorizonDetectorEngine {
     _lastProcessed = now;
 
     // Process in a compute isolate to avoid jank
-    compute(_processFrame, _FrameData.fromImage(image)).then((correction) {
+    compute(_processFrameDebug, _FrameData.fromImage(image)).then((result) {
       _processing = false;
       if (!_running) return;
-      if (correction != null) {
-        lastCorrection = correction;
-        _controller.add(correction);
+
+      debugNotifier.value = result;
+
+      if (result.correction != null) {
+        lastCorrection = result.correction;
+        _controller.add(result.correction!);
       }
     }).catchError((_) {
       _processing = false;
@@ -386,6 +415,7 @@ class HorizonDetectorEngine {
   /// Release resources.
   Future<void> dispose() async {
     _running = false;
+    debugNotifier.dispose();
     await _controller.close();
   }
 }
@@ -418,9 +448,18 @@ class _FrameData {
   }
 }
 
-/// Top-level function for compute isolate — processes a single frame.
-HorizonCorrection? _processFrame(_FrameData data) {
-  if (data.width == 0 || data.height == 0) return null;
+/// Top-level function for compute isolate — processes a single frame
+/// and returns full debug info.
+HorizonDebugInfo _processFrameDebug(_FrameData data) {
+  final now = DateTime.now();
+  if (data.width == 0 || data.height == 0) {
+    return HorizonDebugInfo(
+      edgePointCount: 0,
+      circle: null,
+      correction: null,
+      timestamp: now,
+    );
+  }
 
   // Downsample
   final scaleX = data.width / kTargetWidth;
@@ -435,5 +474,28 @@ HorizonCorrection? _processFrame(_FrameData data) {
     }
   }
 
-  return detectHorizonFromLuminance(dst, kTargetWidth, kTargetHeight);
+  // Run pipeline with intermediate results
+  final edges = sobelEdgeDetect(dst, kTargetWidth, kTargetHeight);
+  final edgePoints = extractEdgePoints(edges, kTargetWidth, kTargetHeight);
+
+  if (edgePoints.length < kMinEdgePoints) {
+    return HorizonDebugInfo(
+      edgePointCount: edgePoints.length,
+      circle: null,
+      correction: null,
+      timestamp: now,
+    );
+  }
+
+  final circle = ransacCircleFit(edgePoints, kTargetWidth, kTargetHeight);
+  final correction = circle != null
+      ? circleToCorrection(circle, width: kTargetWidth, height: kTargetHeight)
+      : null;
+
+  return HorizonDebugInfo(
+    edgePointCount: edgePoints.length,
+    circle: circle,
+    correction: correction,
+    timestamp: now,
+  );
 }
