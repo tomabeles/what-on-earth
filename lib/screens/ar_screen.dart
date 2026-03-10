@@ -8,6 +8,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../globe/bridge.dart';
 import '../globe/globe_view.dart';
+import '../onboarding/onboarding_banner.dart';
+import '../onboarding/onboarding_flow.dart';
 import '../position/position_controller.dart';
 import '../position/position_source.dart';
 import '../sensors/device_orientation.dart' as sensor;
@@ -191,6 +193,12 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     super.dispose();
   }
 
+  void _openOnboarding() {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => const OnboardingFlow()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -204,6 +212,13 @@ class _ARScreenState extends ConsumerState<ARScreen> {
           // Layer 4: UI Chrome
           // HUD command panel (CTRL>, SET> buttons + modal overlays)
           const Positioned.fill(child: HudCommandPanel()),
+          // Layer 5: Onboarding banner (auto-hides when complete)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: OnboardingBanner(onTap: _openOnboarding),
+          ),
         ],
       ),
     );
