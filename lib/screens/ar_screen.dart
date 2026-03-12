@@ -15,6 +15,7 @@ import '../sensors/horizon_detector.dart';
 import '../sensors/lvlh_frame.dart';
 import '../sensors/orientation_corrections.dart';
 import '../sensors/sensor_fusion_provider.dart';
+import '../shared/camera_overlay_provider.dart';
 import '../shared/horizon_debug_overlay.dart';
 import '../shared/hud_command_panel.dart';
 import '../shared/layer_control_panel.dart';
@@ -197,14 +198,17 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final showCameraOverlay = ref.watch(cameraOverlayProvider);
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           // Layer 1: Globe WebView (CesiumJS)
           GlobeView(bridge: _bridge),
-          // Layer 2: Camera preview at 25% opacity (for horizon calibration)
-          if (_cameraController != null &&
+          // Layer 2: Camera preview at 25% opacity (toggled via SET menu)
+          if (showCameraOverlay &&
+              _cameraController != null &&
               _cameraController!.value.isInitialized)
             Positioned.fill(
               child: Opacity(
@@ -212,8 +216,8 @@ class _ARScreenState extends ConsumerState<ARScreen> {
                 child: CameraPreview(_cameraController!),
               ),
             ),
-          // Layer 3: Horizon detection debug overlay
-          if (_horizonDetector != null)
+          // Layer 3: Horizon detection debug overlay (shown with camera)
+          if (showCameraOverlay && _horizonDetector != null)
             Positioned.fill(
               child: HorizonDebugOverlay(
                 debugNotifier: _horizonDetector!.debugNotifier,
@@ -221,8 +225,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
             ),
           // Layer 4: Telemetry HUD
           const Positioned.fill(child: TelemetryHud()),
-          // Layer 4: UI Chrome
-          // HUD command panel (CTRL>, SET> buttons + modal overlays)
+          // Layer 5: UI Chrome
           const Positioned.fill(child: HudCommandPanel()),
         ],
       ),

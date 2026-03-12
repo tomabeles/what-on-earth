@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../position/position_controller.dart';
 import '../position/position_source.dart';
+import 'camera_overlay_provider.dart';
 import 'hud_visibility_provider.dart';
 import 'layer_control_panel.dart';
 import 'theme.dart';
@@ -37,6 +38,7 @@ class DisplaySection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = Theme.of(context).extension<AppTokens>()!;
     final hudVisible = ref.watch(hudVisibilityProvider);
+    final cameraOverlay = ref.watch(cameraOverlayProvider);
     ref.watch(themeProvider);
     final notifier = ref.read(themeProvider.notifier);
 
@@ -89,6 +91,27 @@ class DisplaySection extends ConsumerWidget {
               value: hudVisible,
               onChanged: () =>
                   ref.read(hudVisibilityProvider.notifier).toggle(),
+              tokens: tokens,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'CAMERA OVERLAY',
+                style: TextStyle(
+                  color: tokens.hudPrimary,
+                  fontFamily: tokens.hudFontFamily,
+                  fontSize: tokens.hudFontSize,
+                ),
+              ),
+            ),
+            SquareToggle(
+              value: cameraOverlay,
+              onChanged: () =>
+                  ref.read(cameraOverlayProvider.notifier).toggle(),
               tokens: tokens,
             ),
           ],
