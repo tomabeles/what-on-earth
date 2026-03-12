@@ -47,6 +47,11 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   CameraController? _cameraController;
   HorizonDetectorEngine? _horizonDetector;
 
+  // Touch steering state
+  bool _isTouchSteering = false;
+  double _touchHeadingDeg = 0;
+  double _touchPitchDeg = 0;
+
   @override
   void initState() {
     super.initState();
@@ -136,21 +141,27 @@ class _ARScreenState extends ConsumerState<ARScreen> {
       await engine.start();
     }
     _orientationSub = engine.orientationStream.listen((orientation) {
-      _bridge.send(OutboundMessage.updateOrientation, orientation.toJson());
       _lastOrientation = orientation;
-      _updateHud();
+      if (!_isTouchSteering) {
+        _bridge.send(OutboundMessage.updateOrientation, orientation.toJson());
+        _updateHud();
+      }
     });
   }
 
   void _updateHud() {
     final pos = _lastPosition;
     final ori = _lastOrientation;
+
+    final headingDeg = _isTouchSteering ? _touchHeadingDeg : ori?.headingDeg;
+    final pitchDeg = _isTouchSteering ? _touchPitchDeg : ori?.pitchDeg;
+
     ref.read(hudDataProvider.notifier).update(HudData(
       latDeg: pos?.latDeg,
       lonDeg: pos?.lonDeg,
       altKm: pos?.altKm,
-      headingDeg: ori?.headingDeg,
-      pitchDeg: ori?.pitchDeg,
+      headingDeg: headingDeg,
+      pitchDeg: pitchDeg,
       rollDeg: ori?.rollDeg,
       velocityKmS: pos?.velocityKmS,
       bearingDeg: pos?.bearingDeg,
@@ -160,6 +171,51 @@ class _ARScreenState extends ConsumerState<ARScreen> {
           : null,
       reticleLabel: _bridge.reticleLabelNotifier.value,
     ));
+  }
+
+  // ── Touch steering ──────────────────────────────────────────────────────
+
+  void _onPanStart(DragStartDetails details) {
+    final ori = _lastOrientation;
+    if (ori == null) return;
+    _isTouchSteering = true;
+    _touchHeadingDeg = ori.headingDeg;
+    _touchPitchDeg = ori.pitchDeg;
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    if (!_isTouchSteering) return;
+
+    const sensitivity = 0.3; // degrees per pixel
+    _touchHeadingDeg -= details.delta.dx * sensitivity;
+    _touchHeadingDeg = (_touchHeadingDeg % 360 + 360) % 360;
+    _touchPitchDeg =
+        (_touchPitchDeg - details.delta.dy * sensitivity).clamp(-90.0, 90.0);
+
+    final override = sensor.DeviceOrientation(
+      headingDeg: _touchHeadingDeg,
+      pitchDeg: _touchPitchDeg,
+      rollDeg: _lastOrientation?.rollDeg ?? 0,
+      reliable: true,
+      timestamp: DateTime.now(),
+    );
+    _bridge.send(OutboundMessage.updateOrientation, override.toJson());
+    _updateHud();
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    _isTouchSteering = false;
+    // Snap back to sensor-driven orientation
+    final ori = _lastOrientation;
+    if (ori != null) {
+      _bridge.send(OutboundMessage.updateOrientation, ori.toJson());
+    }
+    _updateHud();
+  }
+
+  void _onPanCancel() {
+    _isTouchSteering = false;
+    _updateHud();
   }
 
   /// Forward layer visibility changes to CesiumJS.
@@ -223,9 +279,19 @@ class _ARScreenState extends ConsumerState<ARScreen> {
                 debugNotifier: _horizonDetector!.debugNotifier,
               ),
             ),
-          // Layer 4: Telemetry HUD
+          // Layer 4: Touch steering gesture detector
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: _onPanStart,
+              onPanUpdate: _onPanUpdate,
+              onPanEnd: _onPanEnd,
+              onPanCancel: _onPanCancel,
+            ),
+          ),
+          // Layer 5: Telemetry HUD
           const Positioned.fill(child: TelemetryHud()),
-          // Layer 5: UI Chrome
+          // Layer 6: UI Chrome
           const Positioned.fill(child: HudCommandPanel()),
         ],
       ),
