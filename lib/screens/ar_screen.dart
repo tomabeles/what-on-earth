@@ -49,6 +49,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
   // Touch steering state
   bool _isTouchSteering = false;
+  bool _isReturning = false; // smooth return animation in progress
   double _touchHeadingDeg = 0;
   double _touchPitchDeg = 0;
 
@@ -142,7 +143,39 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     }
     _orientationSub = engine.orientationStream.listen((orientation) {
       _lastOrientation = orientation;
-      if (!_isTouchSteering) {
+      if (_isTouchSteering) return;
+
+      if (_isReturning) {
+        // Ease back: move 15% of remaining distance each tick (~50Hz)
+        const decay = 0.85;
+        final targetH = orientation.headingDeg;
+        final targetP = orientation.pitchDeg;
+
+        // Shortest-path heading delta (handles 0/360 wrap)
+        var dh = targetH - _touchHeadingDeg;
+        if (dh > 180) dh -= 360;
+        if (dh < -180) dh += 360;
+        final dp = targetP - _touchPitchDeg;
+
+        _touchHeadingDeg += dh * (1 - decay);
+        _touchHeadingDeg = (_touchHeadingDeg % 360 + 360) % 360;
+        _touchPitchDeg += dp * (1 - decay);
+
+        // Close enough — finish returning
+        if (dh.abs() < 0.5 && dp.abs() < 0.5) {
+          _isReturning = false;
+        }
+
+        final blended = sensor.DeviceOrientation(
+          headingDeg: _touchHeadingDeg,
+          pitchDeg: _touchPitchDeg,
+          rollDeg: orientation.rollDeg,
+          reliable: orientation.reliable,
+          timestamp: orientation.timestamp,
+        );
+        _bridge.send(OutboundMessage.updateOrientation, blended.toJson());
+        _updateHud();
+      } else {
         _bridge.send(OutboundMessage.updateOrientation, orientation.toJson());
         _updateHud();
       }
@@ -153,8 +186,9 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     final pos = _lastPosition;
     final ori = _lastOrientation;
 
-    final headingDeg = _isTouchSteering ? _touchHeadingDeg : ori?.headingDeg;
-    final pitchDeg = _isTouchSteering ? _touchPitchDeg : ori?.pitchDeg;
+    final overriding = _isTouchSteering || _isReturning;
+    final headingDeg = overriding ? _touchHeadingDeg : ori?.headingDeg;
+    final pitchDeg = overriding ? _touchPitchDeg : ori?.pitchDeg;
 
     ref.read(hudDataProvider.notifier).update(HudData(
       latDeg: pos?.latDeg,
@@ -179,8 +213,13 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     final ori = _lastOrientation;
     if (ori == null) return;
     _isTouchSteering = true;
-    _touchHeadingDeg = ori.headingDeg;
-    _touchPitchDeg = ori.pitchDeg;
+    if (_isReturning) {
+      // Interrupt return — continue from current animated position
+      _isReturning = false;
+    } else {
+      _touchHeadingDeg = ori.headingDeg;
+      _touchPitchDeg = ori.pitchDeg;
+    }
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
@@ -205,17 +244,12 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
   void _onPanEnd(DragEndDetails details) {
     _isTouchSteering = false;
-    // Snap back to sensor-driven orientation
-    final ori = _lastOrientation;
-    if (ori != null) {
-      _bridge.send(OutboundMessage.updateOrientation, ori.toJson());
-    }
-    _updateHud();
+    _isReturning = true; // smooth ease-back driven by orientation stream
   }
 
   void _onPanCancel() {
     _isTouchSteering = false;
-    _updateHud();
+    _isReturning = true;
   }
 
   /// Forward layer visibility changes to CesiumJS.
