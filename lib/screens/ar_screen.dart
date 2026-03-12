@@ -279,19 +279,24 @@ class _ARScreenState extends ConsumerState<ARScreen> {
                 debugNotifier: _horizonDetector!.debugNotifier,
               ),
             ),
-          // Layer 4: Touch steering gesture detector
+          // Layer 4: Touch steering gesture detector.
+          // Must be opaque to absorb touches from the WebView platform view
+          // below. Command panel buttons sit above this and still receive taps.
           Positioned.fill(
             child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
+              behavior: HitTestBehavior.opaque,
               onPanStart: _onPanStart,
               onPanUpdate: _onPanUpdate,
               onPanEnd: _onPanEnd,
               onPanCancel: _onPanCancel,
+              child: const SizedBox.expand(),
             ),
           ),
-          // Layer 5: Telemetry HUD
-          const Positioned.fill(child: TelemetryHud()),
-          // Layer 6: UI Chrome
+          // Layer 5: Telemetry HUD (paints only, no hit testing)
+          const Positioned.fill(
+            child: IgnorePointer(child: TelemetryHud()),
+          ),
+          // Layer 6: UI Chrome (buttons sit on top of everything)
           const Positioned.fill(child: HudCommandPanel()),
         ],
       ),
