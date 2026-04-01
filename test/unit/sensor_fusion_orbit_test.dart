@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:what_on_earth/sensors/device_orientation.dart';
 import 'package:what_on_earth/sensors/orientation_corrections.dart';
 import 'package:what_on_earth/sensors/sensor_fusion.dart';
 
@@ -50,8 +49,8 @@ void main() {
 
       // With horizon correction, pitch should be pulled toward 25°
       // Without it, pitch is pulled toward accel-derived reference
-      // They should produce different results
-      expect(withHorizon.pitchDeg, isNot(closeTo(withoutHorizon.pitchDeg, 0.01)));
+      expect(
+          withHorizon.pitchDeg, isNot(closeTo(withoutHorizon.pitchDeg, 0.01)));
     });
 
     test('ignores stale horizon correction', () {
@@ -119,7 +118,7 @@ void main() {
   });
 
   group('applyFilter with LvlhFrame', () {
-    test('uses LVLH reference when orbital and no horizon correction', () {
+    test('LVLH does not override accelerometer pitch/roll reference', () {
       final lvlh = LvlhFrame(
         nadirEcef: (-1, 0, 0),
         velocityEcef: (0, 1, 0),
@@ -149,46 +148,9 @@ void main() {
         timestamp: now,
       );
 
-      // LVLH reference (0°, 0°) vs accel reference should differ
-      // (unless accel happens to give the same result)
-      // The key thing is that it doesn't crash
-      expect(withLvlh.pitchDeg, isA<double>());
-      expect(withLvlh.rollDeg, isA<double>());
-      expect(withLvlh.headingDeg, isA<double>());
-    });
-
-    test('LVLH is ignored at low altitude', () {
-      final lowAlt = LvlhFrame(
-        nadirEcef: (-1, 0, 0),
-        velocityEcef: (0, 1, 0),
-        crossTrackEcef: (0, 0, 1),
-        referencePitchDeg: 0,
-        referenceRollDeg: 0,
-        altKm: 10, // Not orbital
-        timestamp: now,
-      );
-
-      final withLowAlt = applyFilter(
-        prev: prev,
-        accel: accel,
-        mag: mag,
-        gyro: gyro,
-        dt: dt,
-        timestamp: now,
-        lvlhFrame: lowAlt,
-      );
-
-      final withoutLvlh = applyFilter(
-        prev: prev,
-        accel: accel,
-        mag: mag,
-        gyro: gyro,
-        dt: dt,
-        timestamp: now,
-      );
-
-      // Low altitude LVLH should be ignored — falls through to accel
-      expect(withLowAlt.pitchDeg, closeTo(withoutLvlh.pitchDeg, 0.01));
+      // LVLH does not override pitch/roll — both use accelerometer
+      expect(withLvlh.pitchDeg, closeTo(withoutLvlh.pitchDeg, 0.01));
+      expect(withLvlh.rollDeg, closeTo(withoutLvlh.rollDeg, 0.01));
     });
   });
 
@@ -309,6 +271,95 @@ void main() {
 
       expect(orientation.headingDeg, isA<double>());
       expect(orientation.headingDeg.isNaN, isFalse);
+    });
+  });
+
+  group('orientation mode in filter', () {
+    test('portrait mode uses gyro.x for pitch integration', () {
+      // Start with flat device
+      final start = applyFilter(
+        prev: null,
+        accel: accel,
+        mag: mag,
+        gyro: gyro,
+        dt: 0,
+        timestamp: now,
+        mode: OrientationMode.portrait,
+      );
+
+      // Apply pitch rotation via gyro.x in portrait
+      final tilted = applyFilter(
+        prev: start,
+        accel: accel,
+        mag: mag,
+        gyro: RawSensorSample(x: 1.0, y: 0, z: 0, timestamp: now),
+        dt: 0.02,
+        timestamp: now.add(const Duration(milliseconds: 20)),
+        mode: OrientationMode.portrait,
+      );
+
+      // Pitch should have changed (gyro.x drives pitch in portrait)
+      expect((tilted.pitchDeg - start.pitchDeg).abs(), greaterThan(0.5));
+    });
+
+    test('landscape mode uses gyro.y for pitch integration', () {
+      // Start at pitch ~90° (upright in landscape: gravity along +X)
+      final uprightAccel =
+          RawSensorSample(x: 9.81, y: 0, z: 0, timestamp: now);
+
+      final start = applyFilter(
+        prev: null,
+        accel: uprightAccel,
+        mag: mag,
+        gyro: gyro,
+        dt: 0,
+        timestamp: now,
+        mode: OrientationMode.landscape,
+      );
+
+      // Apply pitch rotation via gyro.y in landscape
+      final tilted = applyFilter(
+        prev: start,
+        accel: uprightAccel,
+        mag: mag,
+        gyro: RawSensorSample(x: 0, y: 1.0, z: 0, timestamp: now),
+        dt: 0.02,
+        timestamp: now.add(const Duration(milliseconds: 20)),
+        mode: OrientationMode.landscape,
+      );
+
+      // Pitch should have changed (gyro.y drives pitch in landscape)
+      expect((tilted.pitchDeg - start.pitchDeg).abs(), greaterThan(0.5));
+    });
+
+    test('portrait mode uses gyro.z for roll integration', () {
+      // Start with upright phone in portrait
+      final uprightAccel =
+          RawSensorSample(x: 0, y: 9.81, z: 0, timestamp: now);
+
+      final start = applyFilter(
+        prev: null,
+        accel: uprightAccel,
+        mag: mag,
+        gyro: gyro,
+        dt: 0,
+        timestamp: now,
+        mode: OrientationMode.portrait,
+      );
+
+      // Apply roll rotation via gyro.z in portrait
+      final rolled = applyFilter(
+        prev: start,
+        accel: uprightAccel,
+        mag: mag,
+        gyro: RawSensorSample(x: 0, y: 0, z: 1.0, timestamp: now),
+        dt: 0.02,
+        timestamp: now.add(const Duration(milliseconds: 20)),
+        mode: OrientationMode.portrait,
+      );
+
+      // Roll should have changed
+      expect((rolled.rollDeg - start.rollDeg).abs(), greaterThan(0.5));
     });
   });
 }

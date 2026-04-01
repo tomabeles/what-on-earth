@@ -16,9 +16,11 @@ import '../sensors/device_orientation.dart' as sensor;
 import '../sensors/horizon_detector.dart';
 import '../sensors/lvlh_frame.dart';
 import '../sensors/orientation_corrections.dart';
+import '../sensors/sensor_fusion.dart' show OrientationMode;
 import '../sensors/sensor_fusion_provider.dart';
 import '../shared/camera_overlay_provider.dart';
 import '../shared/horizon_debug_overlay.dart';
+import '../shared/orientation_lock_provider.dart';
 import '../shared/hud_command_panel.dart';
 import '../shared/layer_control_panel.dart';
 import '../shared/telemetry_hud.dart';
@@ -48,6 +50,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
   CameraController? _cameraController;
   HorizonDetectorEngine? _horizonDetector;
+  ProviderSubscription<OrientationLock>? _orientationLockSub;
 
   // Touch steering state
   bool _isTouchSteering = false;
@@ -64,6 +67,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     _startOrientation();
     _startHorizonDetector();
     _listenLayerToggles();
+    _listenOrientationLock();
     _bridge.fpsNotifier.addListener(_onFpsChanged);
     _bridge.reticleLabelNotifier.addListener(_onReticleLabelChanged);
   }
@@ -231,7 +235,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     _touchHeadingDeg -= details.delta.dx * sensitivity;
     _touchHeadingDeg = (_touchHeadingDeg % 360 + 360) % 360;
     _touchPitchDeg =
-        (_touchPitchDeg - details.delta.dy * sensitivity).clamp(-90.0, 90.0);
+        (_touchPitchDeg - details.delta.dy * sensitivity).clamp(0.0, 180.0);
 
     final override = sensor.DeviceOrientation(
       headingDeg: _touchHeadingDeg,
@@ -254,13 +258,33 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     _isReturning = true;
   }
 
+  /// Forward orientation lock changes to the sensor fusion engine.
+  void _listenOrientationLock() {
+    final engine = ref.read(sensorFusionEngineProvider);
+    // Set initial mode
+    final lock = ref.read(orientationLockProvider);
+    engine.setOrientationMode(lock == OrientationLock.portrait
+        ? OrientationMode.portrait
+        : OrientationMode.landscape);
+    // Listen for changes
+    _orientationLockSub =
+        ref.listenManual(orientationLockProvider, (_, next) {
+      engine.setOrientationMode(next == OrientationLock.portrait
+          ? OrientationMode.portrait
+          : OrientationMode.landscape);
+    });
+  }
+
   /// Forward layer visibility changes to CesiumJS.
   void _listenLayerToggles() {
     ref.listenManual(layerVisibilityProvider, (prev, next) {
+      // On first callback (prev == null) or SharedPreferences load, sync all
+      // layers so CesiumJS matches Flutter state regardless of JS defaults.
+      final syncAll = prev == null;
       for (final key in next.keys) {
         final was = prev?[key] ?? true;
         final now = next[key] ?? true;
-        if (was == now) continue;
+        if (!syncAll && was == now) continue;
 
         if (key == 'stars') {
           _bridge.setSkybox(now);
@@ -278,6 +302,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     _positionSub?.cancel();
     _orientationSub?.cancel();
     _horizonSub?.cancel();
+    _orientationLockSub?.close();
     if (_cameraController != null && _horizonDetector != null) {
       _horizonDetector!.stop(_cameraController!);
     }
@@ -297,6 +322,9 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   @override
   Widget build(BuildContext context) {
     final showCameraOverlay = ref.watch(cameraOverlayProvider);
+    // Watch orientation lock so changes from SET menu apply immediately.
+    // The provider's _apply() handles SystemChrome.setPreferredOrientations.
+    ref.watch(orientationLockProvider);
 
     return Scaffold(
       backgroundColor: Colors.black,
