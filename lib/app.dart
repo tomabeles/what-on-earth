@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'onboarding/onboarding_flow.dart';
+import 'onboarding/onboarding_state_manager.dart';
 import 'screens/ar_screen.dart';
 import 'screens/loading_screen.dart';
 import 'shared/theme.dart';
@@ -21,14 +23,14 @@ class WhatOnEarthApp extends ConsumerWidget {
   }
 }
 
-class _AppEntry extends StatefulWidget {
+class _AppEntry extends ConsumerStatefulWidget {
   const _AppEntry();
 
   @override
-  State<_AppEntry> createState() => _AppEntryState();
+  ConsumerState<_AppEntry> createState() => _AppEntryState();
 }
 
-class _AppEntryState extends State<_AppEntry> {
+class _AppEntryState extends ConsumerState<_AppEntry> {
   final _loadingKey = GlobalKey<LoadingScreenState>();
   bool _ready = false;
 
@@ -40,7 +42,7 @@ class _AppEntryState extends State<_AppEntry> {
 
   Future<void> _initAndTransition() async {
     // Show the loading screen for a minimum duration so the animation
-    // is visible, then fade out and switch to the AR view.
+    // is visible, then fade out and switch to the main view.
     await Future<void>.delayed(const Duration(seconds: 3));
     if (!mounted) return;
     await _loadingKey.currentState?.fadeOut();
@@ -50,7 +52,15 @@ class _AppEntryState extends State<_AppEntry> {
 
   @override
   Widget build(BuildContext context) {
-    if (_ready) return const ARScreen();
-    return LoadingScreen(key: _loadingKey);
+    if (!_ready) return LoadingScreen(key: _loadingKey);
+
+    // After loading, check onboarding state to route accordingly.
+    final mask = ref.watch(onboardingStateProvider);
+    final isComplete = (mask & 0x7) == 0x7;
+
+    if (isComplete) {
+      return const ARScreen();
+    }
+    return const OnboardingFlow();
   }
 }
