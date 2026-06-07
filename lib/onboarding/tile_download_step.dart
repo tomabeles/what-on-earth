@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -100,10 +101,37 @@ class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
       .fold(0.0, (s, l) => s + l.estimatedSizeMb);
 
   @override
+  void initState() {
+    super.initState();
+    _checkExistingTiles();
+  }
+
+  @override
   void dispose() {
     _cancelToken?.cancel();
     _downloadSub?.cancel();
     super.dispose();
+  }
+
+  /// If tiles already exist on disk (e.g. from a previous install that
+  /// survived an app rebuild), skip the download step automatically.
+  Future<void> _checkExistingTiles() async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final tilesDir = Directory('${docsDir.path}/tiles');
+    if (!tilesDir.existsSync()) return;
+
+    // Check each layer for at least one tile file
+    final layersPresent = _layerOptions.where((layer) {
+      final layerDir = Directory('${tilesDir.path}/${layer.layerId}');
+      return layerDir.existsSync() &&
+          layerDir.listSync(recursive: true).any((e) => e is File);
+    }).toList();
+
+    if (!mounted) return;
+    if (layersPresent.length == _layerOptions.length) {
+      // All layers have tiles on disk — auto-complete
+      _finish();
+    }
   }
 
   Future<void> _startDownload() async {
