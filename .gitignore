@@ -52,3 +52,6 @@ app.*.map.json
 
 # Node / web_globe
 web_globe/node_modules/
+
+# Local secrets — config is injected via --dart-define, never committed
+.env
