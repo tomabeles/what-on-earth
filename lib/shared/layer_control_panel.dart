@@ -19,7 +19,7 @@ class LayerDef {
 
 const _layers = [
   LayerDef('stars', 'STARS'),
-  LayerDef('borders', 'BORDERS', defaultOn: false),
+  LayerDef('borders', 'BORDERS'),
   LayerDef('water', 'WATER'),
 ];
 
