@@ -458,6 +458,26 @@ class SensorFusionEngine {
   /// Determines gyro axis mapping and roll formula.
   OrientationMode _orientationMode = OrientationMode.landscape;
 
+  // --- Debug sensor toggles ---
+  bool _accelEnabled = true;
+  bool _gyroEnabled = true;
+  bool _magEnabled = true;
+
+  // --- Debug diagnostics (readable by UI) ---
+  /// Latest raw sensor snapshots for debug display.
+  RawSensorSample? lastRawAccel;
+  RawSensorSample? lastRawGyro;
+  RawSensorSample? lastRawMag;
+
+  /// Current effective alpha (after adaptive adjustment).
+  double lastEffectiveAlpha = kFilterAlpha;
+
+  /// Current gravity deviation as a fraction (0 = exactly 1g).
+  double lastGravityDeviation = 0.0;
+
+  /// Delta between gyro-tracked heading and magnetometer reference.
+  double lastHeadingRefDelta = 0.0;
+
   bool _running = false;
   bool _interferenceDetected = false;
   int _stableCount = 0;
@@ -550,6 +570,14 @@ class SensorFusionEngine {
     _orientationMode = mode;
   }
 
+  /// Enable/disable individual sensors for debug purposes.
+  void setAccelEnabled(bool v) => _accelEnabled = v;
+  void setGyroEnabled(bool v) => _gyroEnabled = v;
+  void setMagEnabled(bool v) => _magEnabled = v;
+
+  /// Whether the magnetometer interference flag is currently set.
+  bool get interferenceDetected => _interferenceDetected;
+
   void _onGyro(GyroscopeEvent event) {
     final accel = _lastAccel;
     var mag = _lastMag;
@@ -574,6 +602,26 @@ class SensorFusionEngine {
       timestamp: now,
     );
 
+    // Populate raw debug snapshots
+    lastRawAccel = accel;
+    lastRawGyro = gyro;
+    lastRawMag = mag;
+
+    // Apply debug sensor toggles:
+    // - Accel OFF → use neutral gravity (0,0,9.81) so heading/pitch refs
+    //   don't corrupt the gyro-tracked state.
+    // - Gyro OFF → zero rates, filter uses only accel/mag reference.
+    // - Mag OFF → use zero field so heading holds at gyro-tracked value.
+    final effectiveAccel = _accelEnabled
+        ? accel
+        : RawSensorSample(x: 0, y: 0, z: 9.81, timestamp: accel.timestamp);
+    final effectiveGyro = _gyroEnabled
+        ? gyro
+        : RawSensorSample(x: 0, y: 0, z: 0, timestamp: gyro.timestamp);
+    final effectiveMag = _magEnabled
+        ? mag
+        : RawSensorSample(x: 0, y: 0, z: 0, timestamp: mag.timestamp);
+
     // Determine alpha and corrections based on orbit mode
     final alpha = kFilterAlpha;
     HorizonCorrection? horizonRef;
@@ -591,9 +639,9 @@ class SensorFusionEngine {
 
     final sample = applyFilter(
       prev: _lastOrientation,
-      accel: accel,
-      mag: mag,
-      gyro: gyro,
+      accel: effectiveAccel,
+      mag: effectiveMag,
+      gyro: effectiveGyro,
       dt: dt,
       timestamp: now,
       alpha: alpha,
@@ -601,6 +649,23 @@ class SensorFusionEngine {
       lvlhFrame: lvlhRef,
       mode: _orientationMode,
     );
+
+    // Update diagnostics
+    final ax = effectiveAccel.x, ay = effectiveAccel.y, az = effectiveAccel.z;
+    final aMag = math.sqrt(ax * ax + ay * ay + az * az);
+    lastGravityDeviation = aMag > 0.5 ? (aMag - 9.81).abs() / 9.81 : 0.0;
+    lastEffectiveAlpha =
+        lastGravityDeviation > _kGravityDeviationThreshold
+            ? math.min(alpha + (1 - alpha) * 0.9, 0.999)
+            : alpha;
+
+    // Heading reference delta (gyro-tracked vs magnetometer reference)
+    if (_lastOrientation != null && _magEnabled) {
+      final refH = vectorHeading(effectiveAccel, effectiveMag);
+      var hDelta = (sample.headingDeg - refH).abs();
+      if (hDelta > 180) hDelta = 360 - hDelta;
+      lastHeadingRefDelta = hDelta;
+    }
 
     // Interference detection: check heading delta (WOE-021)
     final prev = _lastOrientation;

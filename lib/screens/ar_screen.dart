@@ -19,6 +19,11 @@ import '../sensors/orientation_corrections.dart';
 import '../sensors/sensor_fusion.dart' show OrientationMode;
 import '../sensors/sensor_fusion_provider.dart';
 import '../shared/camera_overlay_provider.dart';
+import '../shared/debug_provider.dart';
+import '../shared/debug_coord_axis_overlay.dart';
+import '../shared/debug_filter_stats_overlay.dart';
+import '../shared/debug_mag_ref_overlay.dart';
+import '../shared/debug_raw_values_overlay.dart';
 import '../shared/horizon_debug_overlay.dart';
 import '../shared/orientation_lock_provider.dart';
 import '../shared/hud_command_panel.dart';
@@ -51,6 +56,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   CameraController? _cameraController;
   HorizonDetectorEngine? _horizonDetector;
   ProviderSubscription<OrientationLock>? _orientationLockSub;
+  ProviderSubscription<DebugState>? _debugSub;
 
   // Touch steering state
   bool _isTouchSteering = false;
@@ -68,6 +74,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     _startHorizonDetector();
     _listenLayerToggles();
     _listenOrientationLock();
+    _listenDebugToggles();
     _bridge.fpsNotifier.addListener(_onFpsChanged);
     _bridge.reticleLabelNotifier.addListener(_onReticleLabelChanged);
   }
@@ -275,6 +282,16 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     });
   }
 
+  /// Forward debug sensor toggles to the sensor fusion engine.
+  void _listenDebugToggles() {
+    final engine = ref.read(sensorFusionEngineProvider);
+    _debugSub = ref.listenManual(debugProvider, (_, next) {
+      engine.setAccelEnabled(next.accelerometerEnabled);
+      engine.setGyroEnabled(next.gyroscopeEnabled);
+      engine.setMagEnabled(next.magnetometerEnabled);
+    });
+  }
+
   /// Forward layer visibility changes to CesiumJS.
   void _listenLayerToggles() {
     ref.listenManual(layerVisibilityProvider, (prev, next) {
@@ -303,6 +320,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     _orientationSub?.cancel();
     _horizonSub?.cancel();
     _orientationLockSub?.close();
+    _debugSub?.close();
     if (_cameraController != null && _horizonDetector != null) {
       _horizonDetector!.stop(_cameraController!);
     }
@@ -361,6 +379,19 @@ class _ARScreenState extends ConsumerState<ARScreen> {
               onPanCancel: _onPanCancel,
               child: const SizedBox.expand(),
             ),
+          ),
+          // Debug overlays (gated internally by debugProvider toggles)
+          const Positioned.fill(
+            child: IgnorePointer(child: DebugCoordAxisOverlay()),
+          ),
+          const Positioned.fill(
+            child: IgnorePointer(child: DebugMagRefOverlay()),
+          ),
+          const Positioned.fill(
+            child: IgnorePointer(child: DebugRawValuesOverlay()),
+          ),
+          const Positioned.fill(
+            child: IgnorePointer(child: DebugFilterStatsOverlay()),
           ),
           // Layer 5: Telemetry HUD (paints only, no hit testing)
           const Positioned.fill(

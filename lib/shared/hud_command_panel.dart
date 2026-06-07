@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'debug_panel.dart';
 import 'layer_control_panel.dart';
 import 'settings_content.dart';
 import 'theme.dart';
 
 /// Which modal is currently open.
-enum HudCommand { none, ctrl, settings }
+enum HudCommand { none, ctrl, settings, debug }
 
 /// Fighter-jet style command button panel + centered modal overlays.
 ///
@@ -81,6 +82,13 @@ class _HudCommandPanelState extends State<HudCommandPanel> {
                     tokens: tokens,
                     onTap: () => _toggle(HudCommand.settings),
                   ),
+                  const SizedBox(height: 8),
+                  _HudCommandButton(
+                    label: 'DBG>',
+                    isActive: _active == HudCommand.debug,
+                    tokens: tokens,
+                    onTap: () => _toggle(HudCommand.debug),
+                  ),
                 ],
               ),
             ),
@@ -94,6 +102,7 @@ class _HudCommandPanelState extends State<HudCommandPanel> {
     return switch (_active) {
       HudCommand.ctrl => const LayerToggles(),
       HudCommand.settings => const SettingsBody(),
+      HudCommand.debug => const DebugPanel(),
       HudCommand.none => const SizedBox.shrink(),
     };
   }
