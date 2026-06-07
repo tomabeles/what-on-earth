@@ -310,19 +310,30 @@ DeviceOrientation applyFilter({
       : 0.0;
   final gyroYawDelta = -yawRate * _rad2deg * dt;
 
-  // Pitch and roll rates depend on orientation mode.
+  // Gravity unit vector — used to remove the yaw (gravity-aligned)
+  // component from body-frame gyro rates so that yaw rotation doesn't
+  // leak into pitch/roll integration.
+  final gHatX = gMag > 0.5 ? accel.x / gMag : 0.0;
+  final gHatY = gMag > 0.5 ? accel.y / gMag : 0.0;
+  final gHatZ = gMag > 0.5 ? accel.z / gMag : 0.0;
+
+  // Pitch and roll rates: subtract the gravity-projected (yaw) component
+  // from body-frame rates before mapping to Euler deltas.  Without this,
+  // yaw rotation leaks into pitch/roll whenever the device isn't perfectly
+  // axis-aligned with gravity (~23° steady-state pitch error at ω≈2 rad/s
+  // with just 12° of device tilt).
   double gyroPitchDelta;
   double gyroRollDelta;
 
   switch (mode) {
     case OrientationMode.portrait:
       // Portrait: pitch=X, roll=Z.
-      gyroPitchDelta = gyro.x * _rad2deg * dt;
-      gyroRollDelta = gyro.z * _rad2deg * dt;
+      gyroPitchDelta = (gyro.x - yawRate * gHatX) * _rad2deg * dt;
+      gyroRollDelta = (gyro.z - yawRate * gHatZ) * _rad2deg * dt;
     case OrientationMode.landscape:
       // Landscape: pitch=Y (sign-flipped), roll=Z (sign-flipped).
-      gyroPitchDelta = -gyro.y * _rad2deg * dt;
-      gyroRollDelta = -gyro.z * _rad2deg * dt;
+      gyroPitchDelta = -(gyro.y - yawRate * gHatY) * _rad2deg * dt;
+      gyroRollDelta = -(gyro.z - yawRate * gHatZ) * _rad2deg * dt;
   }
 
   final gyroPitch = prev.pitchDeg + gyroPitchDelta;
@@ -344,8 +355,10 @@ DeviceOrientation applyFilter({
   // --- Complementary filter blend ---
   final fusedPitch =
       effectiveAlpha * gyroPitch + (1 - effectiveAlpha) * refPitchDeg;
+  // Roll wraps at ±180° — use circular blending (like heading) to avoid
+  // discontinuities when the accelerometer reference is near the wrap point.
   final fusedRoll =
-      effectiveAlpha * gyroRoll + (1 - effectiveAlpha) * refRollDeg;
+      _blendAngles(gyroRoll, refRollDeg, effectiveAlpha);
   final fusedHeading =
       _blendAngles(gyroHeading, refHeadingDeg, effectiveAlpha);
 
