@@ -7,6 +7,7 @@ import '../position/position_source.dart';
 import 'camera_overlay_provider.dart';
 import 'hud_visibility_provider.dart';
 import 'layer_control_panel.dart';
+import 'orientation_lock_provider.dart';
 import 'theme.dart';
 import 'theme_provider.dart';
 
@@ -116,7 +117,96 @@ class DisplaySection extends ConsumerWidget {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'ORIENTATION',
+                style: TextStyle(
+                  color: tokens.hudPrimary,
+                  fontFamily: tokens.hudFontFamily,
+                  fontSize: tokens.hudFontSize,
+                ),
+              ),
+            ),
+            _OrientationSelector(tokens: tokens),
+          ],
+        ),
       ],
+    );
+  }
+}
+
+/// Two-button selector for orientation lock (landscape / portrait).
+class _OrientationSelector extends ConsumerWidget {
+  const _OrientationSelector({required this.tokens});
+  final AppTokens tokens;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(orientationLockProvider);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _OrientationButton(
+          label: 'LAND',
+          isSelected: current == OrientationLock.landscape,
+          tokens: tokens,
+          onTap: () =>
+              ref.read(orientationLockProvider.notifier).set(OrientationLock.landscape),
+        ),
+        const SizedBox(width: 6),
+        _OrientationButton(
+          label: 'PORT',
+          isSelected: current == OrientationLock.portrait,
+          tokens: tokens,
+          onTap: () =>
+              ref.read(orientationLockProvider.notifier).set(OrientationLock.portrait),
+        ),
+      ],
+    );
+  }
+}
+
+class _OrientationButton extends StatelessWidget {
+  const _OrientationButton({
+    required this.label,
+    required this.isSelected,
+    required this.tokens,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final AppTokens tokens;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? tokens.hudPrimary.withValues(alpha: 0.25)
+              : Colors.transparent,
+          border: Border.all(
+            color: isSelected ? tokens.hudPrimary : const Color(0xBFC0C0C0),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? tokens.hudPrimary : tokens.hudSecondary,
+            fontFamily: tokens.hudFontFamily,
+            fontSize: tokens.hudFontSize,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
     );
   }
 }
