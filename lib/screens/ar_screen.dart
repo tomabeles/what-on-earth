@@ -16,7 +16,7 @@ import '../sensors/device_orientation.dart' as sensor;
 import '../sensors/horizon_detector.dart';
 import '../sensors/lvlh_frame.dart';
 import '../sensors/orientation_corrections.dart';
-import '../sensors/sensor_fusion.dart' show OrientationMode;
+import '../sensors/sensor_fusion.dart' show OrientationMode, SensorFusionEngine;
 import '../sensors/sensor_fusion_provider.dart';
 import '../shared/camera_overlay_provider.dart';
 import '../shared/debug_provider.dart';
@@ -47,6 +47,9 @@ class ARScreen extends ConsumerStatefulWidget {
 class _ARScreenState extends ConsumerState<ARScreen> {
   final _bridge = BridgeController();
 
+  // Captured in initState so dispose() can stop it without touching ref.
+  late final SensorFusionEngine _engine;
+
   StreamSubscription<OrbitalPosition>? _positionSub;
   StreamSubscription<sensor.DeviceOrientation>? _orientationSub;
   StreamSubscription<HorizonCorrection>? _horizonSub;
@@ -67,6 +70,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
   @override
   void initState() {
     super.initState();
+    _engine = ref.read(sensorFusionEngineProvider);
     WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startPosition();
@@ -91,7 +95,6 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     await _bridge.globeReady;
     if (!mounted) return;
 
-    final engine = ref.read(sensorFusionEngineProvider);
     final notifier = ref.read(positionControllerProvider.notifier);
     _positionSub = notifier.positionStream.listen((pos) {
       _bridge.send(OutboundMessage.updatePosition, pos.toJson());
@@ -99,7 +102,7 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
       // Compute LVLH frame and feed to sensor fusion engine
       final lvlh = computeLvlhFrame(pos);
-      engine.updateLvlhFrame(lvlh);
+      _engine.updateLvlhFrame(lvlh);
 
       _updateHud();
     });
@@ -131,10 +134,9 @@ class _ARScreenState extends ConsumerState<ARScreen> {
       }
 
       _horizonDetector = HorizonDetectorEngine();
-      final engine = ref.read(sensorFusionEngineProvider);
 
       _horizonSub = _horizonDetector!.correctionStream.listen((correction) {
-        engine.updateHorizonCorrection(correction);
+        _engine.updateHorizonCorrection(correction);
       });
 
       _horizonDetector!.start(_cameraController!);
@@ -150,11 +152,10 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     await _bridge.globeReady;
     if (!mounted) return;
 
-    final engine = ref.read(sensorFusionEngineProvider);
-    if (!engine.isRunning) {
-      await engine.start();
+    if (!_engine.isRunning) {
+      await _engine.start();
     }
-    _orientationSub = engine.orientationStream.listen((orientation) {
+    _orientationSub = _engine.orientationStream.listen((orientation) {
       _lastOrientation = orientation;
       if (_isTouchSteering) return;
 
@@ -267,16 +268,15 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
   /// Forward orientation lock changes to the sensor fusion engine.
   void _listenOrientationLock() {
-    final engine = ref.read(sensorFusionEngineProvider);
     // Set initial mode
     final lock = ref.read(orientationLockProvider);
-    engine.setOrientationMode(lock == OrientationLock.portrait
+    _engine.setOrientationMode(lock == OrientationLock.portrait
         ? OrientationMode.portrait
         : OrientationMode.landscape);
     // Listen for changes
     _orientationLockSub =
         ref.listenManual(orientationLockProvider, (_, next) {
-      engine.setOrientationMode(next == OrientationLock.portrait
+      _engine.setOrientationMode(next == OrientationLock.portrait
           ? OrientationMode.portrait
           : OrientationMode.landscape);
     });
@@ -284,11 +284,10 @@ class _ARScreenState extends ConsumerState<ARScreen> {
 
   /// Forward debug sensor toggles to the sensor fusion engine.
   void _listenDebugToggles() {
-    final engine = ref.read(sensorFusionEngineProvider);
     _debugSub = ref.listenManual(debugProvider, (_, next) {
-      engine.setAccelEnabled(next.accelerometerEnabled);
-      engine.setGyroEnabled(next.gyroscopeEnabled);
-      engine.setMagEnabled(next.magnetometerEnabled);
+      _engine.setAccelEnabled(next.accelerometerEnabled);
+      _engine.setGyroEnabled(next.gyroscopeEnabled);
+      _engine.setMagEnabled(next.magnetometerEnabled);
     });
   }
 
@@ -326,6 +325,9 @@ class _ARScreenState extends ConsumerState<ARScreen> {
     }
     _horizonDetector?.dispose();
     _cameraController?.dispose();
+    // Stop sensor subscriptions while no AR view is mounted — the engine is a
+    // keepAlive singleton and restarts on the next _startOrientation().
+    _engine.stop();
     WakelockPlus.disable();
     _bridge.dispose();
     super.dispose();
