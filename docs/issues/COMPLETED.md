@@ -58,3 +58,7 @@
 | WOE-075 | Telemetry HUD -- FPS Counter | 3400bf3 |
 | WOE-077 | Camera Toggle in Control Panel | 3400bf3 |
 | WOE-080 | Settings -- Display Section | 3400bf3 |
+| WOE-063 | Theme System -- AppTokens + 4 Named Themes | f1a6ecc |
+| WOE-032 | Onboarding Tile Download UI Integration | a3407db |
+| WOE-046 | Onboarding Flow 3-Step PageView | a3407db |
+| WOE-047 | Magnetometer Calibration Routine | a3407db |
