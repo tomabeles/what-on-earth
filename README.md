@@ -119,3 +119,33 @@ Without `key.properties`, release builds fall back to debug signing so
 `flutter run --release` still works, but Play Console will reject them.
 Back up the keystore: losing it means resetting the upload key through
 Play support.
+
+### Signed builds in CI
+
+The `Release` workflow (`.github/workflows/release.yml`) reconstructs the
+keystore from secrets and builds a signed `.aab` + universal `.apk`. It runs
+when you push a `v*` tag (and attaches the artifacts to a GitHub Release), or
+on demand via **Actions → Release → Run workflow**.
+
+Add these repository secrets once (**Settings → Secrets and variables →
+Actions → New repository secret**):
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `base64 -i android/upload-keystore.jks \| pbcopy` (macOS), then paste |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore/store password |
+| `ANDROID_KEY_PASSWORD` | key password (same as store for PKCS12) |
+| `ANDROID_KEY_ALIAS` | `upload` |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | optional runtime config baked in via `--dart-define` |
+
+The build's `versionCode` comes from the workflow run number (kept unique and
+monotonic so Play never rejects a duplicate); the `versionName` comes from the
+tag (`v1.2.3` → `1.2.3`) or the manual run's input, falling back to `pubspec`.
+To cut a release:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+iOS signing in CI is not wired yet (needs Apple certificates + an App Store
+Connect API key) — tracked under WOE-056.
