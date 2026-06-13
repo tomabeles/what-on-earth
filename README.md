@@ -84,3 +84,38 @@ Physical device testing is required for Android WebView transparency (emulator b
 | `flutter build apk --debug` | Debug Android build |
 | `flutter build ios --no-codesign --debug` | Debug iOS build |
 | `dart run build_runner build` | Run drift + riverpod code generation |
+
+## Release signing (Android)
+
+Play Store uploads must be signed with the upload key. One-time setup:
+
+1. Generate the upload keystore (pick your own passwords; store them in a
+   password manager — the keystore and `key.properties` are git-ignored):
+
+   ```bash
+   keytool -genkey -v -keystore ~/upload-keystore.jks \
+     -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+   ```
+
+2. Create `android/key.properties`:
+
+   ```properties
+   storeFile=/Users/<you>/upload-keystore.jks
+   storePassword=<store password>
+   keyAlias=upload
+   keyPassword=<key password>
+   ```
+
+3. Build the upload bundle:
+
+   ```bash
+   flutter build appbundle --release
+   ```
+
+   Output: `build/app/outputs/bundle/release/app-release.aab` — upload this
+   in Play Console.
+
+Without `key.properties`, release builds fall back to debug signing so
+`flutter run --release` still works, but Play Console will reject them.
+Back up the keystore: losing it means resetting the upload key through
+Play support.
