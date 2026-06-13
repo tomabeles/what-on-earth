@@ -89,21 +89,25 @@ Physical device testing is required for Android WebView transparency (emulator b
 
 Play Store uploads must be signed with the upload key. One-time setup:
 
-1. Generate the upload keystore (pick your own passwords; store them in a
-   password manager — the keystore and `key.properties` are git-ignored):
+1. Generate the upload keystore into `android/` (pick one password and reuse
+   it for both prompts — PKCS12 keystores, the keytool default, don't support
+   a separate key password; store it in a password manager). The keystore and
+   `key.properties` are git-ignored:
 
    ```bash
-   keytool -genkey -v -keystore ~/upload-keystore.jks \
+   keytool -genkey -v -keystore android/upload-keystore.jks \
      -keyalg RSA -keysize 2048 -validity 10000 -alias upload
    ```
 
-2. Create `android/key.properties`:
+2. Create `android/key.properties`. Use an **absolute** path for `storeFile` —
+   Gradle resolves a relative `storeFile` against `android/app/`, not `android/`,
+   so a bare filename won't be found:
 
    ```properties
-   storeFile=/Users/<you>/upload-keystore.jks
-   storePassword=<store password>
+   storeFile=/absolute/path/to/repo/android/upload-keystore.jks
+   storePassword=<password>
    keyAlias=upload
-   keyPassword=<key password>
+   keyPassword=<same password>
    ```
 
 3. Build the upload bundle:
