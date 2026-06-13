@@ -1,4 +1,4 @@
-package com.whatonearth.what_on_earth
+package space.whatonearth.app
 
 import io.flutter.embedding.android.FlutterActivity
 
