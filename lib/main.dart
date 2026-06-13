@@ -7,6 +7,7 @@ import 'app.dart';
 import 'position/tle_manager.dart';
 import 'position/tle_refresh_daemon.dart';
 import 'tile_cache/tile_downloader.dart';
+import 'tile_cache/tile_layers.dart';
 import 'tile_cache/tile_server.dart';
 
 void main() async {
@@ -37,50 +38,16 @@ void main() async {
 void _downloadTileLayers(String documentsPath) {
   final downloader = TileDownloader();
 
-  const layers = [
-    // Satellite imagery (ESRI World Imagery) — primary base layer.
-    // Note: ESRI uses {z}/{y}/{x} order in the URL (Y before X).
-    (
-      id: 'satellite',
-      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/'
-          'World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      ext: 'jpg',
-    ),
-    // NASA VIIRS Black Marble (2016 composite) — city lights at night.
-    (
-      id: 'nightlights',
-      url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/'
-          'VIIRS_Black_Marble/default/2016-01-01/'
-          'GoogleMapsCompatible_Level8/{z}/{y}/{x}.png',
-      ext: 'png',
-    ),
-    // CartoDB Dark Matter — minimal dark-themed political map.
-    (
-      id: 'darkmatter',
-      url: 'https://cartodb-basemaps-a.global.ssl.fastly.net/'
-          'dark_nolabels/{z}/{x}/{y}.png',
-      ext: 'png',
-    ),
-    // NASA Blue Marble Next Generation — classic cloud-free Earth composite.
-    (
-      id: 'bluemarble',
-      url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/'
-          'BlueMarble_NextGeneration/default/'
-          'GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg',
-      ext: 'jpeg',
-    ),
-  ];
-
   // Download all layers in parallel so a failure in one doesn't block others.
-  for (final layer in layers) {
+  for (final layer in kTileLayers) {
     downloader
         .downloadLayer(
           layerId: layer.id,
-          sourceUrlTemplate: layer.url,
+          sourceUrlTemplate: layer.urlTemplate,
           documentsPath: documentsPath,
           minZoom: 0,
           maxZoom: 7,
-          ext: layer.ext,
+          ext: layer.fileExtension,
         )
         .listen(
           (p) {

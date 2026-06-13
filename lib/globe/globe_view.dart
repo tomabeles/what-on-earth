@@ -30,6 +30,7 @@ class _GlobeViewState extends State<GlobeView> {
   HttpServer? _server;
   late final BridgeController _bridge;
   late final bool _ownsBridge;
+  Object? _serverError;
 
   @override
   void initState() {
@@ -41,7 +42,25 @@ class _GlobeViewState extends State<GlobeView> {
 
   Future<void> _startServer() async {
     final handler = const shelf.Pipeline().addHandler(_serveGlobeAsset);
-    _server = await shelf_io.serve(handler, 'localhost', 8080);
+    try {
+      final server = await shelf_io.serve(handler, 'localhost', 8080);
+      if (!mounted) {
+        await server.close(force: true);
+        return;
+      }
+      _server = server;
+    } catch (e) {
+      // Most likely the port is already taken (stale instance, hot restart
+      // race, or another app). Without the server the WebView shows a blank
+      // globe with no explanation, so surface the failure instead.
+      debugPrint('GlobeView: failed to start asset server on :8080 — $e');
+      if (mounted) setState(() => _serverError = e);
+    }
+  }
+
+  void _retryServer() {
+    setState(() => _serverError = null);
+    _startServer();
   }
 
   @override
@@ -53,6 +72,30 @@ class _GlobeViewState extends State<GlobeView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_serverError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Globe failed to start',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$_serverError',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: _retryServer,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
     return InAppWebView(
       key: const Key('globe_view'),
       initialUrlRequest: URLRequest(

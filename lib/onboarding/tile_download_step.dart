@@ -9,58 +9,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../shared/theme.dart';
 import '../tile_cache/tile_downloader.dart';
+import '../tile_cache/tile_layers.dart';
 
 // ---------------------------------------------------------------------------
 // Layer options (TECH_SPEC §7.5, WOE-032)
 // ---------------------------------------------------------------------------
 
-/// A downloadable tile layer option shown during onboarding.
-class LayerOption {
-  final String layerId;
-  final String displayName;
-  final double estimatedSizeMb;
-  final String sourceUrlTemplate;
-  final String fileExtension;
-
-  const LayerOption({
-    required this.layerId,
-    required this.displayName,
-    required this.estimatedSizeMb,
-    required this.sourceUrlTemplate,
-    required this.fileExtension,
-  });
-}
-
-const _layerOptions = [
-  LayerOption(
-    layerId: 'satellite',
-    displayName: 'Satellite Imagery',
-    estimatedSizeMb: 150,
-    sourceUrlTemplate:
-        'https://server.arcgisonline.com/ArcGIS/rest/services/'
-        'World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    fileExtension: 'jpg',
-  ),
-  LayerOption(
-    layerId: 'nightlights',
-    displayName: 'Night Lights',
-    estimatedSizeMb: 80,
-    sourceUrlTemplate:
-        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/'
-        'VIIRS_Black_Marble/default/2016-01-01/'
-        'GoogleMapsCompatible_Level8/{z}/{y}/{x}.png',
-    fileExtension: 'png',
-  ),
-  LayerOption(
-    layerId: 'darkmatter',
-    displayName: 'Dark Map',
-    estimatedSizeMb: 40,
-    sourceUrlTemplate:
-        'https://cartodb-basemaps-a.global.ssl.fastly.net/'
-        'dark_nolabels/{z}/{x}/{y}.png',
-    fileExtension: 'png',
-  ),
-];
+/// Layers offered in the onboarding picker — sourced from the shared
+/// [kTileLayers] config so URLs/metadata live in one place.
+final _layerOptions =
+    kTileLayers.where((l) => l.showInOnboarding).toList(growable: false);
 
 const _prefKey = 'downloaded_layers';
 
@@ -87,7 +45,7 @@ class TileDownloadStep extends ConsumerStatefulWidget {
 @visibleForTesting
 class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
   final Map<String, bool> _selected = {
-    for (final l in _layerOptions) l.layerId: true,
+    for (final l in _layerOptions) l.id: true,
   };
 
   bool _downloading = false;
@@ -97,7 +55,7 @@ class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
   StreamSubscription<TileDownloadProgress>? _downloadSub;
 
   double get _totalSelectedMb => _layerOptions
-      .where((l) => _selected[l.layerId] == true)
+      .where((l) => _selected[l.id] == true)
       .fold(0.0, (s, l) => s + l.estimatedSizeMb);
 
   @override
@@ -122,7 +80,7 @@ class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
 
     // Check each layer for at least one tile file
     final layersPresent = _layerOptions.where((layer) {
-      final layerDir = Directory('${tilesDir.path}/${layer.layerId}');
+      final layerDir = Directory('${tilesDir.path}/${layer.id}');
       return layerDir.existsSync() &&
           layerDir.listSync(recursive: true).any((e) => e is File);
     }).toList();
@@ -140,7 +98,7 @@ class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
     _cancelToken = CancelToken();
 
     final selectedLayers =
-        _layerOptions.where((l) => _selected[l.layerId] == true).toList();
+        _layerOptions.where((l) => _selected[l.id] == true).toList();
 
     if (selectedLayers.isEmpty) {
       _finish();
@@ -159,8 +117,8 @@ class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
       if (_cancelToken!.isCancelled) break;
 
       final stream = downloader.downloadLayer(
-        layerId: layer.layerId,
-        sourceUrlTemplate: layer.sourceUrlTemplate,
+        layerId: layer.id,
+        sourceUrlTemplate: layer.urlTemplate,
         documentsPath: docsDir.path,
         minZoom: 0,
         maxZoom: 5,
@@ -188,9 +146,9 @@ class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
     setState(() => _done = true);
   }
 
-  Future<void> _saveCompletedLayers(List<LayerOption> layers) async {
+  Future<void> _saveCompletedLayers(List<TileLayerConfig> layers) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_prefKey, layers.map((l) => l.layerId).toList());
+    await prefs.setStringList(_prefKey, layers.map((l) => l.id).toList());
   }
 
   void _cancel() {
@@ -255,8 +213,8 @@ class TileDownloadStepState extends ConsumerState<TileDownloadStep> {
             for (final layer in _layerOptions)
               _LayerCheckbox(
                 layer: layer,
-                selected: _selected[layer.layerId] ?? false,
-                onChanged: (v) => setState(() => _selected[layer.layerId] = v),
+                selected: _selected[layer.id] ?? false,
+                onChanged: (v) => setState(() => _selected[layer.id] = v),
                 tokens: tokens,
               ),
             const SizedBox(height: 8),
@@ -365,7 +323,7 @@ class _LayerCheckbox extends StatelessWidget {
     required this.tokens,
   });
 
-  final LayerOption layer;
+  final TileLayerConfig layer;
   final bool selected;
   final ValueChanged<bool> onChanged;
   final AppTokens tokens;
