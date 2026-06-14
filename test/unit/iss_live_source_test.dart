@@ -81,7 +81,7 @@ void main() {
       });
     });
 
-    test('network error after success emits last known as estimated', () {
+    test('network error stays silent (no stale re-emit)', () {
       fakeAsync((async) {
         whenGetSucceeds();
         final events = <OrbitalPosition>[];
@@ -91,16 +91,14 @@ void main() {
         async.flushMicrotasks();
         expect(events.single.sourceType, PositionSourceType.live);
 
-        // Second poll fails with a network error.
+        // Second poll fails with a network error — the source emits nothing;
+        // detecting the silence and falling back is the controller's job.
         whenGetThrows(connectionError());
         async.elapse(const Duration(seconds: 2));
         async.flushMicrotasks();
 
-        expect(events, hasLength(2));
-        expect(events.last.sourceType, PositionSourceType.estimated);
-        expect(events.last.latDeg, 51.5); // same coords as last live fix
-        expect(events.last.lonDeg, -0.1);
-        expect(events.last.altKm, 420.0);
+        expect(events, hasLength(1));
+        expect(events.single.sourceType, PositionSourceType.live);
       });
     });
 
@@ -117,7 +115,7 @@ void main() {
       });
     });
 
-    test('500 response emits last known as estimated', () {
+    test('500 response stays silent (no stale re-emit)', () {
       fakeAsync((async) {
         whenGetSucceeds();
         final events = <OrbitalPosition>[];
@@ -131,7 +129,8 @@ void main() {
         async.elapse(const Duration(seconds: 2));
         async.flushMicrotasks();
 
-        expect(events.last.sourceType, PositionSourceType.estimated);
+        expect(events, hasLength(1));
+        expect(events.single.sourceType, PositionSourceType.live);
       });
     });
 

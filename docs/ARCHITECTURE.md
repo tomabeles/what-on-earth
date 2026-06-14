@@ -331,29 +331,51 @@ abstract class PositionSource {
 }
 ```
 
-### Source Implementations
+### Source Registry (`lib/position/position_source_registry.dart`)
 
-| Source | Class | Data Origin | Update Rate |
-|--------|-------|-------------|-------------|
-| Live | `ISSLiveSource` | WhereTheISS.at API | Every 2 seconds |
-| TLE | `TLESource` | CelesTrak TLE → satellite.js SGP4 | Every 2 seconds (JS-side interval) |
-| Static | `StaticPositionSource` | User-configured coordinates | Every 5 seconds |
+All sources are declared once as `PositionSourceDescriptor`s, ordered by fallback
+priority. This is the single extension point — a new telemetry source (another
+API, a WebSocket feed, a geocoded address) is one descriptor entry plus a
+`PositionSource` implementation; the controller, settings toggles, and override
+UI all derive from this list.
+
+| Priority | Source | Class | Data Origin | Network? | Default |
+|----------|--------|-------|-------------|----------|---------|
+| 0 | ISS Live | `ISSLiveSource` | WhereTheISS.at API (2s poll) | yes | on |
+| 1 | TLE | `TLESource` | CelesTrak TLE → satellite.js SGP4 (cached, offline-capable) | no | on |
+| 2 | Manual | `StaticPositionSource` | User-entered lat/long (or address) | no | on |
+| 3 | GPS | `GpsPositionSource` | Device GPS (device location, not ISS) | no | off |
+
+Sources emit **only real fixes** — on failure they stay silent. Each source's
+internal `StreamController` is revived on `start()` so a source can be restarted
+(e.g. for a recovery probe) after being stopped.
 
 ### Position Controller (`lib/position/position_controller.dart`)
 
-`PositionController` is a `keepAlive` Riverpod provider that manages the active source and implements automatic fallback:
+`PositionController` is a `keepAlive` Riverpod provider that orchestrates the
+enabled sources (filtered & ordered by the registry) with two mechanisms:
 
 ```
-Startup: Live source
+Active = highest-priority enabled source with a healthy breaker
     │
-    ├── 3 consecutive "estimated" positions
-    │   └── Switch to TLE source (fallback)
+    ├── Watchdog: no fix within the source's staleTimeout (live 8 s)
+    │   └── trip its CircuitBreaker → demote to the next enabled source
+    │       (Live → TLE → Manual → … so the HUD always gets coordinates,
+    │        even on a cold start with no network)
     │
-    └── First "live" position while in fallback
-        └── Switch back to Live source (recovery)
+    └── Recovery probe (CircuitBreaker): once a tripped source's cooldown
+        elapses, run it ALONGSIDE the current source; the first fix promotes
+        it back and stops the lower one (no coverage gap). The live API uses
+        exponential backoff (30 s → 5 min cap) — "retry WhereTheISS.at
+        occasionally"; local sources re-probe on a flat 15 s interval.
 ```
 
-Users can override auto-switching by pinning a source in Settings.
+The `CircuitBreaker` (`lib/position/circuit_breaker.dart`) is a small, pure,
+time-injected state machine (`closed` → `open` → `halfOpen`).
+
+**Settings** (`enabledSourcesProvider`, persisted): users enable/disable each
+source (at least one always remains enabled) to shape the fallback chain, and
+can optionally pin a single source (manual override) or choose `AUTO`.
 
 ### TLE Refresh
 
@@ -773,8 +795,9 @@ WhereTheISS.at API (2s poll)          CelesTrak (6h refresh)
         │                               (disk cache)
         │                                      │
         ▼                                      ▼
-  PositionController ◄──── fallback ──── TLESource
-  (unified stream)                    (SGP4 via bridge)
+  PositionController ◄── watchdog demote ── TLESource ──► StaticPositionSource
+  (registry-ordered chain;     ▲ recovery probe          (manual lat/long)
+   per-source CircuitBreaker)  └──────────────────────────────┘
         │
         ▼
   ARScreen._startPosition()

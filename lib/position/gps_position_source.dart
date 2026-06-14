@@ -14,7 +14,8 @@ const double _kGpsViewAltKm = 100.0;
 /// The reported altitude is fixed at [_kGpsViewAltKm] to give a useful
 /// globe viewing height rather than the device's ground-level altitude.
 class GpsPositionSource implements PositionSource {
-  final _controller = StreamController<OrbitalPosition>.broadcast();
+  StreamController<OrbitalPosition> _controller =
+      StreamController<OrbitalPosition>.broadcast();
   StreamSubscription<Position>? _gpsSub;
 
   @override
@@ -25,6 +26,10 @@ class GpsPositionSource implements PositionSource {
 
   @override
   Future<void> start() async {
+    // Revive the stream if this instance was previously stopped.
+    if (_controller.isClosed) {
+      _controller = StreamController<OrbitalPosition>.broadcast();
+    }
     final ok = await _ensurePermission();
     if (!ok) {
       debugPrint('GpsPositionSource: location permission denied');

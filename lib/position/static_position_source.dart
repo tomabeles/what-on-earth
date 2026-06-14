@@ -25,7 +25,8 @@ class StaticPositionSource implements PositionSource {
   final OrbitalPosition _position;
   final Duration interval;
 
-  final _controller = StreamController<OrbitalPosition>.broadcast();
+  StreamController<OrbitalPosition> _controller =
+      StreamController<OrbitalPosition>.broadcast();
   Timer? _timer;
 
   @override
@@ -36,6 +37,10 @@ class StaticPositionSource implements PositionSource {
 
   @override
   Future<void> start() async {
+    // Revive the stream if this instance was previously stopped.
+    if (_controller.isClosed) {
+      _controller = StreamController<OrbitalPosition>.broadcast();
+    }
     _emit();
     _timer = Timer.periodic(interval, (_) => _emit());
   }
