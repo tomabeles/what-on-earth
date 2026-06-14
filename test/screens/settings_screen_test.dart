@@ -77,41 +77,55 @@ void main() {
       );
     }
 
-    testWidgets('shows POSITION SOURCE with ISS, GPS, STATIC buttons',
+    // The controller runs a periodic watchdog timer, so the tree never
+    // "settles"; pump explicitly instead of pumpAndSettle.
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('shows POSITION SOURCES with enable toggles and override row',
         (tester) async {
       await tester.pumpWidget(buildApp());
-      await tester.pumpAndSettle();
+      await settle(tester);
 
-      expect(find.text('POSITION SOURCE'), findsOneWidget);
-      expect(find.text('ISS'), findsOneWidget);
+      expect(find.text('POSITION SOURCES'), findsOneWidget);
+      // Enabled sources appear in both the toggle list and the override row.
+      expect(find.text('ISS LIVE'), findsWidgets);
+      expect(find.text('TLE'), findsWidgets);
+      expect(find.text('MANUAL'), findsWidgets);
+      // GPS is off by default → only the toggle row, not the override row.
       expect(find.text('GPS'), findsOneWidget);
-      expect(find.text('STATIC'), findsOneWidget);
-      // TLE is not shown — it's automatic
-      expect(find.text('TLE'), findsNothing);
+      // Override controls.
+      expect(find.text('ACTIVE SOURCE'), findsOneWidget);
+      expect(find.text('AUTO'), findsOneWidget);
     });
 
-    testWidgets('tapping STATIC opens dialog', (tester) async {
+    testWidgets('tapping EDIT opens the manual position dialog',
+        (tester) async {
       await tester.pumpWidget(buildApp());
-      await tester.pumpAndSettle();
+      await settle(tester);
 
-      await tester.tap(find.text('STATIC'));
-      await tester.pumpAndSettle();
+      await tester.tap(find.text('EDIT'));
+      await settle(tester);
 
       expect(find.text('STATIC POSITION'), findsOneWidget);
       expect(find.text('COORDINATES'), findsOneWidget);
       expect(find.text('ADDRESS'), findsOneWidget);
     });
 
-    testWidgets('static dialog can be dismissed with X', (tester) async {
+    testWidgets('manual position dialog can be dismissed with X',
+        (tester) async {
       await tester.pumpWidget(buildApp());
-      await tester.pumpAndSettle();
+      await settle(tester);
 
-      await tester.tap(find.text('STATIC'));
-      await tester.pumpAndSettle();
+      await tester.tap(find.text('EDIT'));
+      await settle(tester);
       expect(find.text('STATIC POSITION'), findsOneWidget);
 
       await tester.tap(find.text('X'));
-      await tester.pumpAndSettle();
+      await settle(tester);
       expect(find.text('STATIC POSITION'), findsNothing);
     });
   });

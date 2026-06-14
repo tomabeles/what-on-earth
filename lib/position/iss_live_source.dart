@@ -7,10 +7,11 @@ import 'position_source.dart';
 
 /// Polls the WhereTheISS.at API every 2 seconds and emits live ISS positions.
 ///
-/// On any error (network failure, timeout, non-2xx response) the last known
-/// position is re-emitted with [PositionSourceType.estimated]. If no
-/// successful poll has occurred yet the stream stays silent until the first
-/// success, rather than emitting a stale or fabricated position.
+/// On any error (network failure, timeout, non-2xx response) nothing is
+/// emitted — the source simply stays silent. Detecting that silence and
+/// falling back to another source is the [PositionController]'s job (via a
+/// staleness watchdog + circuit breaker); this source never fabricates or
+/// re-emits stale positions.
 ///
 /// Inject [Dio] for testability. Use [ISSLiveSource.create()] in production
 /// to get a pre-configured instance with 5-second timeouts.
@@ -33,7 +34,8 @@ class ISSLiveSource implements PositionSource {
   static const _url = 'https://api.wheretheiss.at/v1/satellites/25544';
 
   final Dio _dio;
-  final _controller = StreamController<OrbitalPosition>.broadcast();
+  StreamController<OrbitalPosition> _controller =
+      StreamController<OrbitalPosition>.broadcast();
   Timer? _timer;
   OrbitalPosition? _lastKnown;
 
@@ -45,6 +47,11 @@ class ISSLiveSource implements PositionSource {
 
   @override
   Future<void> start() async {
+    // Revive the stream if this instance was previously stopped, so the
+    // controller can restart it (e.g. a circuit-breaker recovery probe).
+    if (_controller.isClosed) {
+      _controller = StreamController<OrbitalPosition>.broadcast();
+    }
     _poll(); // immediate first update, fire-and-forget
     _timer = Timer.periodic(const Duration(seconds: 2), (_) => _poll());
   }
@@ -97,18 +104,8 @@ class ISSLiveSource implements PositionSource {
       _lastKnown = pos;
       if (!_controller.isClosed) _controller.add(pos);
     } catch (e) {
+      // Stay silent on failure; the controller's watchdog handles fallback.
       debugPrint('ISSLiveSource: poll error: $e');
-      _emitEstimated();
-    }
-  }
-
-  void _emitEstimated() {
-    final last = _lastKnown;
-    if (last != null && !_controller.isClosed) {
-      _controller.add(last.copyWith(
-        timestamp: DateTime.now().toUtc(),
-        sourceType: PositionSourceType.estimated,
-      ));
     }
   }
 }

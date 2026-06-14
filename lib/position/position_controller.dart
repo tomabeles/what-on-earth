@@ -1,19 +1,24 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../globe/bridge.dart';
-import 'gps_position_source.dart';
-import 'iss_live_source.dart';
+import 'circuit_breaker.dart';
+import 'enabled_sources_provider.dart';
 import 'position_source.dart';
-import 'static_position_source.dart';
-import 'tle_manager.dart';
-import 'tle_source.dart';
+import 'position_source_registry.dart';
+
+// Re-export the source registry so existing imports of the source providers
+// (livePositionSourceProvider, etc.) keep resolving through this library.
+export 'position_source_registry.dart';
 
 part 'position_controller.g.dart';
+
+/// Injectable wall-clock used for watchdog/circuit-breaker timing. Overridden
+/// in tests (set before reading [positionControllerProvider]) so fallback and
+/// recovery logic is fully deterministic.
+@visibleForTesting
+DateTime Function() positionNow = DateTime.now;
 
 /// Snapshot of the current position source state for display in the status
 /// indicator widget (WOE-015).
@@ -39,125 +44,35 @@ class PositionSourceStatus {
       'lastFixAt=$lastFixAt)';
 }
 
-// ── Source providers (overridable for testing) ────────────────────────────
-
-/// Production [ISSLiveSource] instance. Override in tests with a fake.
-@riverpod
-PositionSource livePositionSource(Ref ref) => ISSLiveSource.create();
-
-/// Production [TLESource] instance. Override in tests with a fake.
-///
-/// NOTE: The [BridgeController] here is a transient instance. It will be
-/// replaced with a shared bridge provider in WOE-014.
-@riverpod
-PositionSource tlePositionSource(Ref ref) => _DeferredTleSource();
-
-/// Static coordinates stored in SharedPreferences. Defaults to ISS orbital
-/// altitude over London (51.5°N, −0.1°E, 420 km). Updated via Settings
-/// screen (WOE-049).
-@riverpod
-Future<({double lat, double lon, double altKm})> staticCoordinates(
-    Ref ref) async {
-  final prefs = await SharedPreferences.getInstance();
-  return (
-    lat: prefs.getDouble('static_lat') ?? 51.5,
-    lon: prefs.getDouble('static_lon') ?? -0.1,
-    altKm: prefs.getDouble('static_alt_km') ?? 420.0,
-  );
-}
-
-/// Production [StaticPositionSource] instance. Override in tests with a fake.
-@riverpod
-PositionSource staticPositionSource(Ref ref) => _DeferredStaticSource(ref);
-
-/// Production [GpsPositionSource] instance. Override in tests with a fake.
-@riverpod
-PositionSource gpsPositionSource(Ref ref) => GpsPositionSource();
-
-/// Lazy-resolved [StaticPositionSource] that reads coordinates from
-/// SharedPreferences on first [start].
-class _DeferredStaticSource implements PositionSource {
-  _DeferredStaticSource(this._ref);
-  final Ref _ref;
-  StaticPositionSource? _inner;
-
-  @override
-  PositionSourceType get type => PositionSourceType.static;
-
-  @override
-  Stream<OrbitalPosition> get positionStream =>
-      _inner?.positionStream ?? const Stream.empty();
-
-  @override
-  Future<void> start() async {
-    if (_inner == null) {
-      final coords = await _ref.read(staticCoordinatesProvider.future);
-      _inner = StaticPositionSource(
-        position: OrbitalPosition(
-          latDeg: coords.lat,
-          lonDeg: coords.lon,
-          altKm: coords.altKm,
-          timestamp: DateTime.now().toUtc(),
-          sourceType: PositionSourceType.static,
-        ),
-        interval: const Duration(seconds: 10),
-      );
-    }
-    await _inner!.start();
-  }
-
-  @override
-  Future<void> stop() async => _inner?.stop();
-}
-
-/// Lazy-resolved [TLESource] that initialises its [TleManager] asynchronously
-/// on first [start] so the provider can be constructed synchronously.
-class _DeferredTleSource implements PositionSource {
-  TLESource? _inner;
-
-  Future<TLESource> _resolve() async {
-    if (_inner != null) return _inner!;
-    final docsDir = await getApplicationDocumentsDirectory();
-    _inner = TLESource(
-      manager: TleManager.create(docsDir),
-      bridge: BridgeController(),
-    );
-    return _inner!;
-  }
-
-  @override
-  PositionSourceType get type => PositionSourceType.estimated;
-
-  @override
-  Stream<OrbitalPosition> get positionStream =>
-      _inner?.positionStream ?? const Stream.empty();
-
-  @override
-  Future<void> start() async => (await _resolve()).start();
-
-  @override
-  Future<void> stop() async => _inner?.stop();
-}
-
 // ── PositionController ────────────────────────────────────────────────────
 
 /// Manages the active [PositionSource] and exposes a unified position stream.
 ///
-/// State is [AsyncValue<PositionSourceStatus>]; it is `loading` briefly while
-/// [build] starts [ISSLiveSource], then transitions to `data` once the first
-/// source is active. Use `ref.watch(positionControllerProvider.future)` to
-/// await initial readiness.
+/// Automatic fallback (TECH_SPEC §7.1) walks the enabled sources in priority
+/// order — **WhereTheISS.at → CelesTrak TLE → Manual lat/long** (+ optional
+/// GPS) — defined by [kPositionSourceDescriptors] and filtered by
+/// [enabledSourcesProvider]:
 ///
-/// Start-up behaviour (TECH_SPEC §7.1):
-/// - Begins with [livePositionSourceProvider].
-/// - After [_kFallbackThreshold] consecutive `estimated` positions, switches
-///   to [tlePositionSourceProvider].
-/// - On the first `live` position while TLE is active, switches back.
+/// - A **watchdog** demotes the active source to the next enabled source when
+///   it produces no fix within its [PositionSourceDescriptor.staleTimeout].
+///   This guarantees the HUD always gets coordinates even if the live API is
+///   unreachable from a cold start.
+/// - A per-source **[CircuitBreaker]** backs off a failed source and schedules
+///   occasional recovery probes ("retry WhereTheISS.at occasionally"). A probe
+///   runs the higher-priority source *alongside* the current one; the first
+///   fix promotes it back and the lower source is stopped, so there is no gap
+///   in coverage.
 ///
-/// [setSourceMode] lets the settings screen pin a specific source.
+/// [setSourceMode] pins a specific source (manual override); pass null to
+/// resume automatic fallback.
 @Riverpod(keepAlive: true)
 class PositionController extends _$PositionController {
-  static const _kFallbackThreshold = 3;
+  /// How often the staleness / recovery watchdog runs.
+  static const _kWatchdogTick = Duration(seconds: 1);
+
+  /// How long a recovery probe is given to produce a fix before it is failed.
+  @visibleForTesting
+  static const kProbeWindow = Duration(seconds: 6);
 
   final _positionStreamController =
       StreamController<OrbitalPosition>.broadcast();
@@ -166,89 +81,250 @@ class PositionController extends _$PositionController {
   Stream<OrbitalPosition> get positionStream =>
       _positionStreamController.stream;
 
+  // Enabled set + manual pin define the active chain.
+  Set<PositionSourceType> _enabled = const {};
+  PositionSourceType? _pinned;
+
+  // Active source state.
+  PositionSourceType? _activeType;
   PositionSource? _activeSource;
-  StreamSubscription<OrbitalPosition>? _sourceSub;
-  int _consecutiveEstimated = 0;
-  bool _inFallback = false;
-  PositionSourceType? _pinnedMode;
+  StreamSubscription<OrbitalPosition>? _activeSub;
+  DateTime? _activeSince;
+  DateTime? _lastFixAt;
+
+  // In-flight recovery probe (a higher-priority source being re-tried while the
+  // current source keeps running).
+  PositionSourceType? _probeType;
+  PositionSource? _probeSource;
+  StreamSubscription<OrbitalPosition>? _probeSub;
+  DateTime? _probeDeadline;
+
+  // Per-source circuit breakers, keyed by type.
+  final Map<PositionSourceType, CircuitBreaker> _breakers = {};
+
+  Timer? _watchdog;
 
   @override
   Future<PositionSourceStatus> build() async {
+    _enabled = ref.read(enabledSourcesProvider);
+    ref.listen(enabledSourcesProvider, (_, next) => _onEnabledChanged(next));
+
+    for (final d in kPositionSourceDescriptors) {
+      _breakers[d.type] = d.breakerBuilder();
+    }
+
     ref.onDispose(() {
-      _sourceSub?.cancel();
+      _watchdog?.cancel();
+      _activeSub?.cancel();
       _activeSource?.stop();
+      _stopProbe();
       _positionStreamController.close();
     });
 
-    final live = ref.read(livePositionSourceProvider);
-    await _switchTo(live);
+    await _reevaluate(positionNow());
+    _watchdog = Timer.periodic(_kWatchdogTick, (_) => _tick());
 
-    return const PositionSourceStatus(
-      sourceType: PositionSourceType.live,
+    return PositionSourceStatus(
+      sourceType: _activeType ?? PositionSourceType.static,
       isLive: false,
     );
   }
 
-  Future<void> _switchTo(PositionSource source) async {
-    await _sourceSub?.cancel();
+  /// Active fallback chain, highest priority first.
+  List<PositionSourceType> get _chain {
+    if (_pinned != null) return [_pinned!];
+    return [
+      for (final d in kPositionSourceDescriptors)
+        if (_enabled.contains(d.type)) d.type,
+    ];
+  }
+
+  // ── Activation ─────────────────────────────────────────────────────────
+
+  /// Activates the highest-priority chain source whose breaker is closed,
+  /// falling back to the last source as a guaranteed last resort. Sources with
+  /// open/half-open breakers are reached via [_maybeProbe] instead.
+  Future<void> _reevaluate(DateTime now) async {
+    final chain = _chain;
+    if (chain.isEmpty) return;
+
+    var target = chain.last; // last resort, even if its breaker is tripped
+    for (final t in chain) {
+      if ((_breakers[t]?.state(now) ?? BreakerState.closed) ==
+          BreakerState.closed) {
+        target = t;
+        break;
+      }
+    }
+    if (target != _activeType) await _activate(target, now);
+  }
+
+  Future<void> _activate(PositionSourceType type, DateTime now) async {
+    await _activeSub?.cancel();
     await _activeSource?.stop();
 
-    _activeSource = source;
-    await source.start();
-
-    _sourceSub = source.positionStream.listen(
-      _onPosition,
+    final desc = descriptorFor(type)!;
+    _activeType = type;
+    _activeSource = ref.read(desc.provider);
+    _activeSince = now;
+    _lastFixAt = null;
+    await _activeSource!.start();
+    _activeSub = _activeSource!.positionStream.listen(
+      _onActiveFix,
       onError: (Object e) => debugPrint('PositionController: stream error: $e'),
     );
   }
 
-  void _onPosition(OrbitalPosition pos) {
+  void _onActiveFix(OrbitalPosition pos) {
     if (_positionStreamController.isClosed) return;
-    _positionStreamController.add(pos);
+    _lastFixAt = positionNow();
+    _breakers[_activeType]?.recordSuccess();
+    _emit(pos);
+  }
 
+  void _emit(OrbitalPosition pos) {
+    _positionStreamController.add(pos);
     state = AsyncData(PositionSourceStatus(
       sourceType: pos.sourceType,
       isLive: pos.sourceType == PositionSourceType.live,
       lastFixAt: pos.timestamp,
     ));
+  }
 
-    if (_pinnedMode != null) return;
+  // ── Watchdog: staleness demotion + recovery probes ───────────────────────
 
-    if (!_inFallback) {
-      if (pos.sourceType == PositionSourceType.estimated) {
-        _consecutiveEstimated++;
-        if (_consecutiveEstimated >= _kFallbackThreshold) {
-          debugPrint('PositionController: falling back to TLESource');
-          _inFallback = true;
-          _consecutiveEstimated = 0;
-          _switchTo(ref.read(tlePositionSourceProvider));
-        }
-      } else {
-        _consecutiveEstimated = 0;
-      }
+  /// Manually advances the watchdog. Exposed for deterministic tests; the
+  /// periodic timer calls the same logic in production.
+  @visibleForTesting
+  void tick() => _tick();
+
+  void _tick() {
+    final now = positionNow();
+    _checkStaleness(now);
+    _maybeProbe(now);
+    _checkProbeDeadline(now);
+  }
+
+  void _checkStaleness(DateTime now) {
+    final type = _activeType;
+    if (type == null) return;
+    final desc = descriptorFor(type)!;
+    final since = _lastFixAt ?? _activeSince ?? now;
+    if (now.difference(since) < desc.staleTimeout) return;
+
+    if (_pinned != null) {
+      // Pinned: keep retrying the forced source without thrashing the chain.
+      _activeSince = now;
+      return;
+    }
+
+    // Active source is stale → trip its breaker and demote.
+    _breakers[type]?.recordFailure(now);
+    final chain = _chain;
+    final idx = chain.indexOf(type);
+    if (idx >= 0 && idx + 1 < chain.length) {
+      _reevaluate(now);
     } else {
-      if (pos.sourceType == PositionSourceType.live) {
-        debugPrint('PositionController: live API recovered, switching back');
-        _inFallback = false;
-        _switchTo(ref.read(livePositionSourceProvider));
+      // Last source in the chain — nothing lower to fall to. Reset the window
+      // so we keep retrying it rather than spinning.
+      _activeSince = now;
+    }
+  }
+
+  void _maybeProbe(DateTime now) {
+    if (_pinned != null || _probeType != null) return;
+    final activeType = _activeType;
+    if (activeType == null) return;
+    final activePriority = descriptorFor(activeType)!.priority;
+
+    for (final d in kPositionSourceDescriptors) {
+      if (!_enabled.contains(d.type)) continue;
+      if (d.priority >= activePriority) continue; // only higher priority
+      if (_breakers[d.type]?.shouldProbe(now) ?? false) {
+        _startProbe(d.type, now);
+        break;
       }
     }
   }
 
+  Future<void> _startProbe(PositionSourceType type, DateTime now) async {
+    _probeType = type;
+    _probeDeadline = now.add(kProbeWindow);
+    final desc = descriptorFor(type)!;
+    _probeSource = ref.read(desc.provider);
+    await _probeSource!.start();
+    _probeSub = _probeSource!.positionStream.listen(
+      (pos) => _onProbeFix(type, pos),
+      onError: (Object e) => debugPrint('PositionController: probe error: $e'),
+    );
+  }
+
+  void _onProbeFix(PositionSourceType type, OrbitalPosition pos) {
+    if (_probeType != type || _positionStreamController.isClosed) return;
+    // Probe produced a fix → promote it to the active source.
+    _breakers[type]?.recordSuccess();
+
+    final promoted = _probeSource!;
+    final promotedSub = _probeSub!;
+    _probeType = null;
+    _probeSource = null;
+    _probeSub = null;
+    _probeDeadline = null;
+
+    // Stop the (lower-priority) current source and adopt the probe.
+    _activeSub?.cancel();
+    _activeSource?.stop();
+    _activeType = type;
+    _activeSource = promoted;
+    _activeSub = promotedSub..onData((p) => _onActiveFix(p));
+    _activeSince = positionNow();
+    _lastFixAt = positionNow();
+    _emit(pos);
+  }
+
+  void _checkProbeDeadline(DateTime now) {
+    final deadline = _probeDeadline;
+    if (_probeType == null || deadline == null) return;
+    if (now.isBefore(deadline)) return;
+    // Probe timed out → fail it (escalates backoff) and stop the probe source.
+    _breakers[_probeType]?.recordFailure(now);
+    _stopProbe();
+  }
+
+  void _stopProbe() {
+    _probeSub?.cancel();
+    _probeSource?.stop();
+    _probeType = null;
+    _probeSource = null;
+    _probeSub = null;
+    _probeDeadline = null;
+  }
+
+  // ── Settings reactions ───────────────────────────────────────────────────
+
+  void _onEnabledChanged(Set<PositionSourceType> next) {
+    _enabled = next;
+    if (_pinned != null) return; // pin overrides the enabled chain
+    // If a probe targets a now-disabled source, abandon it.
+    if (_probeType != null && !next.contains(_probeType)) _stopProbe();
+    _reevaluate(positionNow());
+  }
+
   /// Pins the active source to [mode]. Pass null to restore auto-switching.
   Future<void> setSourceMode(PositionSourceType? mode) async {
-    _pinnedMode = mode;
-    _consecutiveEstimated = 0;
-    _inFallback = false;
-
-    if (mode == null || mode == PositionSourceType.live) {
-      await _switchTo(ref.read(livePositionSourceProvider));
-    } else if (mode == PositionSourceType.estimated) {
-      await _switchTo(ref.read(tlePositionSourceProvider));
-    } else if (mode == PositionSourceType.static) {
-      await _switchTo(ref.read(staticPositionSourceProvider));
-    } else if (mode == PositionSourceType.gps) {
-      await _switchTo(ref.read(gpsPositionSourceProvider));
+    _stopProbe();
+    _pinned = mode;
+    // Reset breakers so a fresh AUTO run / new pin starts clean.
+    for (final b in _breakers.values) {
+      b.recordSuccess();
+    }
+    final now = positionNow();
+    if (mode != null) {
+      await _activate(mode, now);
+    } else {
+      // Force re-activation from the top of the restored chain.
+      _activeType = null;
+      await _reevaluate(now);
     }
   }
 }

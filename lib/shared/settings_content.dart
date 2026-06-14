@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../position/enabled_sources_provider.dart';
 import '../position/position_controller.dart';
 import '../position/position_source.dart';
 import 'camera_overlay_provider.dart';
@@ -307,19 +308,9 @@ class PositionSourceSection extends ConsumerStatefulWidget {
       _PositionSourceSectionState();
 }
 
-class _PositionSourceSectionState
-    extends ConsumerState<PositionSourceSection> {
-  PositionSourceType? _localSelection;
-
-  void _onSourceChanged(PositionSourceType type) {
-    if (type == PositionSourceType.static) {
-      // Open the static position modal instead of switching immediately
-      _showStaticModal();
-      return;
-    }
-    setState(() => _localSelection = type);
-    ref.read(positionControllerProvider.notifier).setSourceMode(type);
-  }
+class _PositionSourceSectionState extends ConsumerState<PositionSourceSection> {
+  /// Manual override: null means AUTO (automatic priority fallback).
+  PositionSourceType? _pinned;
 
   void _showStaticModal() {
     showDialog<void>(
@@ -327,33 +318,35 @@ class _PositionSourceSectionState
       barrierColor: Colors.black54,
       builder: (_) => _StaticPositionDialog(
         onApply: () {
-          setState(() => _localSelection = PositionSourceType.static);
-          ref
-              .read(positionControllerProvider.notifier)
-              .setSourceMode(PositionSourceType.static);
+          // Re-read coords on the next static start so new values take effect.
+          ref.invalidate(staticCoordinatesProvider);
+          if (_pinned == PositionSourceType.static) {
+            ref
+                .read(positionControllerProvider.notifier)
+                .setSourceMode(PositionSourceType.static);
+          }
         },
       ),
     );
   }
 
+  void _setPin(PositionSourceType? type) {
+    setState(() => _pinned = type);
+    ref.read(positionControllerProvider.notifier).setSourceMode(type);
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = Theme.of(context).extension<AppTokens>()!;
-    final asyncStatus = ref.watch(positionControllerProvider);
-    final status = asyncStatus.value;
-    final selected =
-        _localSelection ?? status?.sourceType ?? PositionSourceType.live;
-    // Map estimated back to ISS for display (TLE is automatic fallback)
-    final displaySelected = selected == PositionSourceType.estimated
-        ? PositionSourceType.live
-        : selected;
+    final enabled = ref.watch(enabledSourcesProvider);
+    final status = ref.watch(positionControllerProvider).value;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'POSITION SOURCE',
+          'POSITION SOURCES',
           style: TextStyle(
             color: tokens.hudPrimary,
             fontFamily: tokens.hudFontFamily,
@@ -362,9 +355,35 @@ class _PositionSourceSectionState
           ),
         ),
         const SizedBox(height: 10),
-        _SourceSelector(
-          selected: displaySelected,
-          onChanged: _onSourceChanged,
+        // Enable/disable toggles. Fallback runs through the enabled set by
+        // priority; at least one source must stay enabled.
+        for (final d in kPositionSourceDescriptors) ...[
+          _SourceToggleRow(
+            label: d.label,
+            enabled: enabled.contains(d.type),
+            onToggle: () =>
+                ref.read(enabledSourcesProvider.notifier).toggle(d.type),
+            onEdit:
+                d.type == PositionSourceType.static ? _showStaticModal : null,
+            tokens: tokens,
+          ),
+          const SizedBox(height: 8),
+        ],
+        const SizedBox(height: 4),
+        Text(
+          'ACTIVE SOURCE',
+          style: TextStyle(
+            color: tokens.hudSecondary,
+            fontFamily: tokens.hudFontFamily,
+            fontSize: tokens.hudFontSize,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _OverrideSelector(
+          pinned: _pinned,
+          activeType: status?.sourceType,
+          enabled: enabled,
+          onChanged: _setPin,
           tokens: tokens,
         ),
       ],
@@ -372,39 +391,101 @@ class _PositionSourceSectionState
   }
 }
 
-/// Row of square buttons for selecting position source (no TLE — automatic).
-class _SourceSelector extends StatelessWidget {
-  const _SourceSelector({
-    required this.selected,
-    required this.onChanged,
+/// A single enable/disable row for a position source, with an optional edit
+/// affordance (used by MANUAL to open the coordinate dialog).
+class _SourceToggleRow extends StatelessWidget {
+  const _SourceToggleRow({
+    required this.label,
+    required this.enabled,
+    required this.onToggle,
     required this.tokens,
+    this.onEdit,
   });
 
-  final PositionSourceType selected;
-  final ValueChanged<PositionSourceType> onChanged;
+  final String label;
+  final bool enabled;
+  final VoidCallback onToggle;
+  final VoidCallback? onEdit;
   final AppTokens tokens;
-
-  static const _options = [
-    (PositionSourceType.live, 'ISS'),
-    (PositionSourceType.gps, 'GPS'),
-    (PositionSourceType.static, 'STATIC'),
-  ];
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        for (var i = 0; i < _options.length; i++) ...[
-          if (i > 0) const SizedBox(width: 6),
-          Expanded(
-            child: _SourceButton(
-              label: _options[i].$2,
-              isSelected: selected == _options[i].$1,
-              tokens: tokens,
-              onTap: () => onChanged(_options[i].$1),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: tokens.hudPrimary,
+              fontFamily: tokens.hudFontFamily,
+              fontSize: tokens.hudFontSize,
             ),
           ),
+        ),
+        if (onEdit != null) ...[
+          GestureDetector(
+            onTap: onEdit,
+            child: Text(
+              'EDIT',
+              style: TextStyle(
+                color: tokens.hudSecondary,
+                fontFamily: tokens.hudFontFamily,
+                fontSize: tokens.hudFontSize,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
         ],
+        SquareToggle(
+          value: enabled,
+          onChanged: onToggle,
+          tokens: tokens,
+        ),
+      ],
+    );
+  }
+}
+
+/// AUTO + one button per enabled source. AUTO restores automatic fallback;
+/// selecting a source pins it (manual override).
+class _OverrideSelector extends StatelessWidget {
+  const _OverrideSelector({
+    required this.pinned,
+    required this.activeType,
+    required this.enabled,
+    required this.onChanged,
+    required this.tokens,
+  });
+
+  final PositionSourceType? pinned;
+  final PositionSourceType? activeType;
+  final Set<PositionSourceType> enabled;
+  final ValueChanged<PositionSourceType?> onChanged;
+  final AppTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    final ordered = [
+      for (final d in kPositionSourceDescriptors)
+        if (enabled.contains(d.type)) d,
+    ];
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        _SourceButton(
+          label: 'AUTO',
+          isSelected: pinned == null,
+          tokens: tokens,
+          onTap: () => onChanged(null),
+        ),
+        for (final d in ordered)
+          _SourceButton(
+            label: d.label,
+            isSelected: pinned == d.type,
+            tokens: tokens,
+            onTap: () => onChanged(d.type),
+          ),
       ],
     );
   }
@@ -428,7 +509,7 @@ class _SourceButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected
               ? tokens.hudPrimary.withValues(alpha: 0.25)

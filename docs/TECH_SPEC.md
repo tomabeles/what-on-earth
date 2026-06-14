@@ -506,7 +506,7 @@ Build-time variables injected via `--dart-define`:
 ```dart
 abstract class PositionSource {
   Stream<OrbitalPosition> get positionStream;
-  PositionSourceType get type;        // live | telemetry | estimated
+  PositionSourceType get type;        // live | estimated | static | gps
   Future<void> start();
   Future<void> stop();
 }
@@ -520,15 +520,25 @@ class OrbitalPosition {
 }
 ```
 
-**`ISSLiveSource`:** Polls `api.wheretheiss.at` every 2 seconds using `dio`. On non-2xx or timeout (5 s), emits the last known position re-tagged as `estimated` and starts the TLE fallback. Resumes live polling when the network recovers.
+**`ISSLiveSource`:** Polls `api.wheretheiss.at` every 2 seconds using `dio`. On non-2xx or timeout (5 s) it stays **silent** — it never fabricates or re-emits stale positions. Detecting that silence and falling back is the controller's responsibility (watchdog + circuit breaker, below).
 
-**`TLESource`:** Reads TLE from `tle/iss_latest.tle` in the app documents directory. Sends the TLE string to the WebView via bridge message `SET_TLE`. The WebView runs `satellite.js` propagation on a 2-second interval and sends `POSITION_UPDATE` messages back to Flutter. Flutter's `TLESource` converts these back into `OrbitalPosition` events tagged `estimated`.
+**`TLESource`:** Reads TLE from `tle/iss_latest.tle` in the app documents directory. Sends the TLE string to the WebView via bridge message `SET_TLE`. The WebView runs `satellite.js` propagation on a 2-second interval and sends `POSITION_UPDATE` messages back to Flutter. Flutter's `TLESource` converts these back into `OrbitalPosition` events tagged `estimated`. Works offline from the cached TLE.
 
-**TLE refresh daemon:** A `flutter_background_fetch` periodic task attempts a TLE refresh every 6 hours. On success, writes to `tle/iss_latest.tle` and sends `SET_TLE` to the WebView.
+**TLE refresh daemon:** A `background_fetch` periodic task attempts a TLE refresh every 6 hours. On success, writes to `tle/iss_latest.tle` and sends `SET_TLE` to the WebView.
 
-**`StaticSource`:** Accepts a lat/lon/alt at construction, emits the same position every 10 seconds. Used for training scenarios.
+**`StaticPositionSource`:** Accepts a user-entered lat/lon/alt, emits the same position every 10 seconds. The manual fallback (and a future address/geocoding entry mode).
 
-**Position source selection:** Stored in shared preferences as `position_source_type`. Default is `live`. The active source is managed by a `PositionController` Riverpod provider that wraps the current source and exposes `positionStream` to the rest of the app.
+**Source registry & extensibility (`lib/position/position_source_registry.dart`):** Every source is declared as a `PositionSourceDescriptor` (type, label, priority, `requiresNetwork`, `defaultEnabled`, provider, `staleTimeout`, breaker config), ordered by fallback priority: **ISS Live (0) → TLE (1) → Manual (2) → GPS (3, default-off)**. Adding a new telemetry source (another API, a WebSocket, geocoded address) is one descriptor entry plus a `PositionSource` implementation.
+
+**`CircuitBreaker` (`lib/position/circuit_breaker.dart`):** Per-source, pure, time-injected state machine (`closed → open → halfOpen`). After a failure it opens and schedules a recovery probe after a cooldown; the live (network) source uses exponential backoff (30 s base, ×2, 5 min cap), local sources a flat 15 s. A success resets it.
+
+**`PositionController` (orchestrator, `keepAlive`):**
+- Runs the highest-priority *enabled* source whose breaker is healthy.
+- **Watchdog** (1 s tick): if the active source produces no fix within its `staleTimeout` (live 8 s), trips its breaker and demotes to the next enabled source — guaranteeing the HUD always receives coordinates, including a cold start with no network.
+- **Recovery probe**: when a tripped higher-priority source's cooldown elapses, it is run *alongside* the current source; the first fix promotes it back and stops the lower one (no coverage gap).
+- Reads the injectable `positionNow` clock so fallback/recovery timing is deterministic in tests.
+
+**Source selection (`enabledSourcesProvider`, persisted as `enabled_position_sources`):** Users enable/disable each source to shape the fallback chain (at least one always enabled), and may optionally pin a single source via `setSourceMode` (manual override) or select `AUTO`. The active source is exposed via the controller's unified `positionStream`.
 
 ### 7.2 Sensor Fusion Engine
 

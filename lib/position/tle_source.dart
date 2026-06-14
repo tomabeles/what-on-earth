@@ -28,7 +28,8 @@ class TLESource implements PositionSource {
 
   final TleManager _manager;
   final BridgeController _bridge;
-  final _controller = StreamController<OrbitalPosition>.broadcast();
+  StreamController<OrbitalPosition> _controller =
+      StreamController<OrbitalPosition>.broadcast();
 
   StreamSubscription<OrbitalPosition>? _positionSub;
   StreamSubscription<String>? _tleSub;
@@ -41,6 +42,10 @@ class TLESource implements PositionSource {
 
   @override
   Future<void> start() async {
+    // Revive the stream if this instance was previously stopped.
+    if (_controller.isClosed) {
+      _controller = StreamController<OrbitalPosition>.broadcast();
+    }
     final tleText = await _manager.loadStored();
     if (tleText == null) {
       debugPrint('TLESource: no stored TLE — stream will remain silent');
